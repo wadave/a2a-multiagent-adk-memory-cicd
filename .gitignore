@@ -1,0 +1,262 @@
+# ==========================
+# General / System / IDEs
+# ==========================
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editors / IDEs
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.vscode-test/
+.history/
+.idea/
+*.swp
+*.swo
+.spyderproject
+.spyproject
+.ropeproject
+.tern-port
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# ==========================
+# Node.js / JavaScript
+# ==========================
+# Dependencies
+node_modules/
+jspm_packages/
+web_modules/
+bower_components/
+
+# Build Outputs
+dist/
+build/Release
+out/
+.next/
+.nuxt/
+.vuepress/dist
+.docusaurus/
+.serverless/
+.fusebox/
+.dynamodb/
+
+# Cache
+.npm
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+.cache
+.parcel-cache
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Testing / Coverage
+coverage
+*.lcov
+.nyc_output
+lib-cov
+testem.log
+
+# Misc
+.lock-wscript
+.grunt
+.node_repl_history
+*.tgz
+.yarn-integrity
+/connect.lock
+/typings
+
+# ==========================
+# Python
+# ==========================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyc
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-wheel-metadata/
+
+# Virtual Environments
+.env
+.venv
+.venv*
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+.cache
+
+# Frameworks (Django, Flask, etc.)
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+instance/
+.webassets-cache
+.scrapy
+celerybeat-schedule
+celerybeat.pid
+
+# Documentation
+docs/_build/
+/site
+
+# Type Checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ty/
+
+# Translations
+*.mo
+*.pot
+
+# Other
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+.pybuilder/
+target/
+profile_default/
+ipython_config.py
+.pdm.toml
+__pypackages__/
+*.sage.py
+cython_debug/
+.python-version
+Pipfile.lock
+Pipfile
+
+# ==========================
+# Data Science / Jupyter
+# ==========================
+.ipynb_checkpoints
+
+# ==========================
+# Terraform
+# ==========================
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform*
+.terraform/
+
+# ==========================
+# Project Specific / Secrets
+# ==========================
+# Environment Variables
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# Secrets & Credentials (NEVER COMMIT THESE)
+credentials.json
+token.json
+client_secret.json
+.secrets.baseline
+
+# Agent / AI Configuration
+.claude/
+.agent/
+.gemini/
+GEMINI.md
+CLAUDE.md
+
+# Dev Notebooks & Temporary files
+dev_notebooks/
+scratch
+tmp*
+/tmp
+
+# Configuration to ignore
+.pre-commit-config.yaml
+.requirements.txt
+
+# Starter pack specific
+.persist_vector_store
+tests/load_test/.results/*.html
+tests/load_test/.results/*.csv
+.locust_env
+my_env.tfvars
+.saved_chats
+
+# A2A Inspector
+tools/a2a-inspector/
