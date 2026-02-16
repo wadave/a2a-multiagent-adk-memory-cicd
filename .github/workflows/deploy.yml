@@ -105,8 +105,8 @@ jobs:
         run: |
           HOSTING_AGENT=$(curl -s \
             -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-            "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines" \
-            | jq -r '.reasoningEngines[] | select(.displayName == "Hosting Agent adk-memory - ADK") | .name' \
+            "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
+            | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent adk-memory - ADK") | .name' \
             | head -1)
           if [ -n "$HOSTING_AGENT" ]; then
             echo "AGENTS_EXIST=true" >> $GITHUB_OUTPUT

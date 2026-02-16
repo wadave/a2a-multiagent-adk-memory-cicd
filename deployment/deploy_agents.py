@@ -26,8 +26,8 @@ def find_existing_agent(client, display_name):
     """Find an existing agent engine by display_name. Returns resource name if found."""
     try:
         for agent_engine in client.agent_engines.list():
-            engine_display_name = getattr(agent_engine, 'display_name', '')
-            engine_name = getattr(agent_engine, 'name', '')
+            engine_display_name = getattr(agent_engine.api_resource, 'display_name', '') or getattr(agent_engine.api_resource, 'displayName', '')
+            engine_name = getattr(agent_engine.api_resource, 'name', '')
             if engine_display_name == display_name:
                 logging.info(f"Found existing agent engine '{display_name}': {engine_name}")
                 return engine_name
@@ -37,12 +37,6 @@ def find_existing_agent(client, display_name):
 
 
 def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, project_number, location, bucket_name, extra_env_vars, extra_packages):
-    # Check if agent already exists
-    existing_name = find_existing_agent(client, agent_card.name)
-    if existing_name:
-        logging.info(f"Agent '{agent_card.name}' already exists. Skipping deployment.")
-        return existing_name
-
     agent = A2aAgent(agent_card=agent_card, agent_executor_builder=executor_builder)
 
     env_vars = {
@@ -63,30 +57,58 @@ def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, p
     if "a2a_agents" not in extra_packages:
         extra_packages.append("a2a_agents")
 
+    config = {
+        "display_name": agent.agent_card.name,
+        "description": agent.agent_card.description,
+        "service_account": f"{project_number}-compute@developer.gserviceaccount.com",
+        "requirements": [
+            "google-cloud-aiplatform[agent_engines,adk]>=1.113.0",
+            "a2a-sdk >= 0.3.5",
+            "google-adk>=1.14.1",
+            "google-genai>=1.36.0",
+            "pydantic==2.11.9",
+            "cloudpickle==3.1.1",
+            "python-dotenv>=1.0.0",
+        ],
+        "http_options": {
+            "base_url": f"https://{location}-aiplatform.googleapis.com",
+            "api_version": "v1beta1",
+        },
+        "staging_bucket": f"gs://{bucket_name}",
+        "env_vars": env_vars,
+        "extra_packages": extra_packages
+    }
+
+    # Check if agent already exists
+    existing_name = find_existing_agent(client, agent.agent_card.name)
+    if existing_name:
+        logging.info(f"Agent '{agent.agent_card.name}' already exists. Updating...")
+        remote_agent = client.agent_engines.update(
+            name=existing_name,
+            agent=agent,
+            config=config
+        )
+        logging.info(f"Updated {agent_name} successfully: {remote_agent.api_resource.name}")
+        return remote_agent.api_resource.name
+
     remote_agent = client.agent_engines.create(
         agent=agent,
-        config={
-            "display_name": agent.agent_card.name,
-            "description": agent.agent_card.description,
-            "service_account": f"{project_number}-compute@developer.gserviceaccount.com",
-            "requirements": [
-                "google-cloud-aiplatform[agent_engines,adk]>=1.113.0",
-                "a2a-sdk >= 0.3.5",
-                "google-adk>=1.14.1",
-                "google-genai>=1.36.0",
-                "pydantic==2.11.9",
-                "cloudpickle==3.1.1",
-                "python-dotenv>=1.0.0",
-            ],
-            "http_options": {
-                "base_url": f"https://{location}-aiplatform.googleapis.com",
-                "api_version": "v1beta1",
-            },
-            "staging_bucket": f"gs://{bucket_name}",
-            "env_vars": env_vars,
-            "extra_packages": extra_packages
-        }
+        config=config
     )
+    
+    # Fix backend bug: Vertex AI ignores displayName on creation, so we update it immediately.
+    try:
+        client.agent_engines.update(
+            name=remote_agent.api_resource.name,
+            config={
+                "display_name": agent.agent_card.name,
+                "description": agent.agent_card.description
+            }
+        )
+        logging.info(f"Patched display name for {agent_name}")
+    except Exception as patch_e:
+        logging.warning(f"Failed to patch display name for {agent_name}: {patch_e}")
+
     logging.info(f"Deployed {agent_name} successfully: {remote_agent.api_resource.name}")
     return remote_agent.api_resource.name
 
