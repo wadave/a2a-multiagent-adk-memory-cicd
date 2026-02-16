@@ -78,7 +78,7 @@ resource "google_cloud_run_v2_service" "a2a_frontend" {
       
       env {
         name  = "AGENT_ENGINE_ID"
-        # This will be injected dynamically if deploying agents outside Terraform, 
+        # This will be injected dynamically if deploying agents outside Terraform,
         # or replaced by a known value if deployed within Terraform
         value = var.agent_engine_id
       }
@@ -86,7 +86,7 @@ resource "google_cloud_run_v2_service" "a2a_frontend" {
       resources {
         limits = {
           cpu    = "1000m"
-          memory = "1024Mi"
+          memory = "2048Mi"
         }
       }
     }
