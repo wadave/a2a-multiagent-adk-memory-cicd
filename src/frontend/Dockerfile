@@ -5,5 +5,5 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 COPY . /app
 ENV PATH="/app/.venv/bin:$PATH"
-RUN uv sync --no-install-project --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
+RUN uv sync --no-install-project
 ENTRYPOINT ["uv", "run", "main.py"]
