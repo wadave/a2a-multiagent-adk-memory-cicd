@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import logging
 from dotenv import load_dotenv
 
@@ -21,7 +22,28 @@ from a2a_agents.hosting_agent.agent_executor import HostingAgentExecutor
 
 logging.basicConfig(level=logging.INFO)
 
+
+def find_existing_agent(client, display_name):
+    """Find an existing agent engine by display_name. Returns resource name if found."""
+    try:
+        for agent_engine in client.agent_engines.list():
+            engine_display_name = getattr(agent_engine, 'display_name', '')
+            engine_name = getattr(agent_engine, 'name', '')
+            if engine_display_name == display_name:
+                logging.info(f"Found existing agent engine '{display_name}': {engine_name}")
+                return engine_name
+    except Exception as e:
+        logging.warning(f"Could not list agent engines: {e}")
+    return None
+
+
 def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, project_number, location, bucket_name, extra_env_vars, extra_packages):
+    # Check if agent already exists
+    existing_name = find_existing_agent(client, agent_card.name)
+    if existing_name:
+        logging.info(f"Agent '{agent_card.name}' already exists. Skipping deployment.")
+        return existing_name
+
     agent = A2aAgent(agent_card=agent_card, agent_executor_builder=executor_builder)
 
     env_vars = {
@@ -124,6 +146,8 @@ def main():
             ["a2a_agents"]
         )
         deployed_agents["cocktail"] = ct_agent_name
+        logging.info("Sleeping for 65 seconds to respect the Reasoning Engine Write Requests per minute quota...")
+        time.sleep(65)
     except Exception as e:
         logging.error(f"Failed to deploy Cocktail Agent: {e}")
         sys.exit(1)
@@ -146,6 +170,8 @@ def main():
             ["a2a_agents"]
         )
         deployed_agents["weather"] = wea_agent_name
+        logging.info("Sleeping for 65 seconds to respect the Reasoning Engine Write Requests per minute quota...")
+        time.sleep(65)
     except Exception as e:
         logging.error(f"Failed to deploy Weather Agent: {e}")
         sys.exit(1)
