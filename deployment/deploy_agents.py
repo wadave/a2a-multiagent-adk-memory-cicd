@@ -1,6 +1,5 @@
 import os
 import sys
-import time
 import logging
 from dotenv import load_dotenv
 
@@ -146,8 +145,6 @@ def main():
             ["a2a_agents"]
         )
         deployed_agents["cocktail"] = ct_agent_name
-        logging.info("Sleeping for 65 seconds to respect the Reasoning Engine Write Requests per minute quota...")
-        time.sleep(65)
     except Exception as e:
         logging.error(f"Failed to deploy Cocktail Agent: {e}")
         sys.exit(1)
@@ -170,8 +167,6 @@ def main():
             ["a2a_agents"]
         )
         deployed_agents["weather"] = wea_agent_name
-        logging.info("Sleeping for 65 seconds to respect the Reasoning Engine Write Requests per minute quota...")
-        time.sleep(65)
     except Exception as e:
         logging.error(f"Failed to deploy Weather Agent: {e}")
         sys.exit(1)

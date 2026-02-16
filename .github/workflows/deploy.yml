@@ -62,37 +62,92 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # 2. Deploy MCP Servers to Cloud Run (only if code changed)
+      # 2. Check existing resources to skip deploy when they already exist
+      - name: Check existing Cloud Run services
+        id: check_services
+        run: |
+          # Check Cocktail MCP Server
+          CT_IMAGE=$(gcloud run services describe cocktail-remote-mcp-server-adk-memory \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
+          if [ -n "$CT_IMAGE" ] && [ "$CT_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
+            echo "COCKTAIL_MCP_EXISTS=true" >> $GITHUB_OUTPUT
+            echo "Cocktail MCP Server already deployed. Skipping."
+          else
+            echo "COCKTAIL_MCP_EXISTS=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check Weather MCP Server
+          WEA_IMAGE=$(gcloud run services describe weather-remote-mcp-server-adk-memory \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
+          if [ -n "$WEA_IMAGE" ] && [ "$WEA_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
+            echo "WEATHER_MCP_EXISTS=true" >> $GITHUB_OUTPUT
+            echo "Weather MCP Server already deployed. Skipping."
+          else
+            echo "WEATHER_MCP_EXISTS=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check Frontend
+          FE_IMAGE=$(gcloud run services describe a2a-frontend-adk-memory \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
+          if [ -n "$FE_IMAGE" ] && [ "$FE_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
+            echo "FRONTEND_EXISTS=true" >> $GITHUB_OUTPUT
+            echo "Frontend already deployed. Skipping."
+          else
+            echo "FRONTEND_EXISTS=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check existing Agent Engines
+        id: check_agents
+        if: steps.changes.outputs.agents == 'true' || steps.changes.outputs.terraform == 'true'
+        run: |
+          HOSTING_AGENT=$(curl -s \
+            -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+            "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines" \
+            | jq -r '.reasoningEngines[] | select(.displayName == "Hosting Agent adk-memory - ADK") | .name' \
+            | head -1)
+          if [ -n "$HOSTING_AGENT" ]; then
+            echo "AGENTS_EXIST=true" >> $GITHUB_OUTPUT
+            echo "AGENT_ENGINE_ID=${HOSTING_AGENT}" >> $GITHUB_OUTPUT
+            echo "Agent engines already exist. Hosting Agent: ${HOSTING_AGENT}. Skipping deploy."
+          else
+            echo "AGENTS_EXIST=false" >> $GITHUB_OUTPUT
+            echo "No existing agent engines found. Will deploy."
+          fi
+
+      # 3. Deploy MCP Servers (only if code changed AND service not already deployed)
       - name: Deploy Cocktail MCP Server
-        if: steps.changes.outputs.cocktail_mcp == 'true'
+        if: steps.changes.outputs.cocktail_mcp == 'true' && steps.check_services.outputs.COCKTAIL_MCP_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/mcp_servers/cocktail_mcp_server \
             --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-memory \
             --project ${{ env.PROJECT_ID }}
 
       - name: Deploy Weather MCP Server
-        if: steps.changes.outputs.weather_mcp == 'true'
+        if: steps.changes.outputs.weather_mcp == 'true' && steps.check_services.outputs.WEATHER_MCP_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/mcp_servers/weather_mcp_server \
             --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-memory \
             --project ${{ env.PROJECT_ID }}
 
-      # 3. Deploy A2A Agents (only if code changed)
+      # 4. Deploy A2A Agents (only if code changed AND agents don't already exist)
       - name: Set up Python
-        if: steps.changes.outputs.agents == 'true'
+        if: steps.changes.outputs.agents == 'true' && steps.check_agents.outputs.AGENTS_EXIST != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        if: steps.changes.outputs.agents == 'true'
+        if: steps.changes.outputs.agents == 'true' && steps.check_agents.outputs.AGENTS_EXIST != 'true'
         run: |
           python -m venv .venv
           .venv/bin/pip install keyrings.google-artifactregistry-auth
           .venv/bin/pip install -e . --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
 
       - name: Run A2A Deploy Script
-        if: steps.changes.outputs.agents == 'true'
+        if: steps.changes.outputs.agents == 'true' && steps.check_agents.outputs.AGENTS_EXIST != 'true'
         id: deploy_agents
         env:
           PROJECT_ID: ${{ env.PROJECT_ID }}
@@ -104,15 +159,15 @@ jobs:
         run: |
           .venv/bin/python deployment/deploy_agents.py
 
-      # 4. Deploy Frontend (only if code changed)
+      # 5. Deploy Frontend (only if code changed AND service not already deployed)
       - name: Build Frontend Image
-        if: steps.changes.outputs.frontend == 'true'
+        if: steps.changes.outputs.frontend == 'true' && steps.check_services.outputs.FRONTEND_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/frontend \
             --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-memory \
             --project ${{ env.PROJECT_ID }}
 
-      # 5. Deploy Infrastructure via Terraform (only if config changed)
+      # 6. Deploy Infrastructure via Terraform (only if config changed)
       - name: Setup Terraform
         if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
         uses: hashicorp/setup-terraform@v3
@@ -132,6 +187,38 @@ jobs:
             -backend-config="prefix=a2a-multiagent-adk-memory-cicd/staging"
         working-directory: deployment/terraform
 
+      - name: Import existing Cloud Run services into Terraform state
+        if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
+        working-directory: deployment/terraform
+        run: |
+          terraform import \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
+            google_cloud_run_v2_service.cocktail_mcp_server \
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-memory" 2>/dev/null || true
+          terraform import \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
+            google_cloud_run_v2_service.weather_mcp_server \
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-memory" 2>/dev/null || true
+          terraform import \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
+            google_cloud_run_v2_service.a2a_frontend \
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-memory" 2>/dev/null || true
+
       - name: Terraform Apply
         if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
         run: |
@@ -141,7 +228,7 @@ jobs:
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}"
+            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}"
         working-directory: deployment/terraform
 
   deploy-prod:
@@ -194,37 +281,92 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # 2. Deploy MCP Servers to Cloud Run (only if code changed)
+      # 2. Check existing resources to skip deploy when they already exist
+      - name: Check existing Cloud Run services
+        id: check_services
+        run: |
+          # Check Cocktail MCP Server
+          CT_IMAGE=$(gcloud run services describe cocktail-remote-mcp-server-adk-memory \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
+          if [ -n "$CT_IMAGE" ] && [ "$CT_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
+            echo "COCKTAIL_MCP_EXISTS=true" >> $GITHUB_OUTPUT
+            echo "Cocktail MCP Server already deployed. Skipping."
+          else
+            echo "COCKTAIL_MCP_EXISTS=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check Weather MCP Server
+          WEA_IMAGE=$(gcloud run services describe weather-remote-mcp-server-adk-memory \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
+          if [ -n "$WEA_IMAGE" ] && [ "$WEA_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
+            echo "WEATHER_MCP_EXISTS=true" >> $GITHUB_OUTPUT
+            echo "Weather MCP Server already deployed. Skipping."
+          else
+            echo "WEATHER_MCP_EXISTS=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check Frontend
+          FE_IMAGE=$(gcloud run services describe a2a-frontend-adk-memory \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
+          if [ -n "$FE_IMAGE" ] && [ "$FE_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
+            echo "FRONTEND_EXISTS=true" >> $GITHUB_OUTPUT
+            echo "Frontend already deployed. Skipping."
+          else
+            echo "FRONTEND_EXISTS=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check existing Agent Engines
+        id: check_agents
+        if: steps.changes.outputs.agents == 'true' || steps.changes.outputs.terraform == 'true'
+        run: |
+          HOSTING_AGENT=$(curl -s \
+            -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+            "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines" \
+            | jq -r '.reasoningEngines[] | select(.displayName == "Hosting Agent adk-memory - ADK") | .name' \
+            | head -1)
+          if [ -n "$HOSTING_AGENT" ]; then
+            echo "AGENTS_EXIST=true" >> $GITHUB_OUTPUT
+            echo "AGENT_ENGINE_ID=${HOSTING_AGENT}" >> $GITHUB_OUTPUT
+            echo "Agent engines already exist. Hosting Agent: ${HOSTING_AGENT}. Skipping deploy."
+          else
+            echo "AGENTS_EXIST=false" >> $GITHUB_OUTPUT
+            echo "No existing agent engines found. Will deploy."
+          fi
+
+      # 3. Deploy MCP Servers (only if code changed AND service not already deployed)
       - name: Deploy Cocktail MCP Server
-        if: steps.changes.outputs.cocktail_mcp == 'true'
+        if: steps.changes.outputs.cocktail_mcp == 'true' && steps.check_services.outputs.COCKTAIL_MCP_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/mcp_servers/cocktail_mcp_server \
             --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-memory \
             --project ${{ env.PROJECT_ID }}
 
       - name: Deploy Weather MCP Server
-        if: steps.changes.outputs.weather_mcp == 'true'
+        if: steps.changes.outputs.weather_mcp == 'true' && steps.check_services.outputs.WEATHER_MCP_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/mcp_servers/weather_mcp_server \
             --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-memory \
             --project ${{ env.PROJECT_ID }}
 
-      # 3. Deploy A2A Agents (only if code changed)
+      # 4. Deploy A2A Agents (only if code changed AND agents don't already exist)
       - name: Set up Python
-        if: steps.changes.outputs.agents == 'true'
+        if: steps.changes.outputs.agents == 'true' && steps.check_agents.outputs.AGENTS_EXIST != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        if: steps.changes.outputs.agents == 'true'
+        if: steps.changes.outputs.agents == 'true' && steps.check_agents.outputs.AGENTS_EXIST != 'true'
         run: |
           python -m venv .venv
           .venv/bin/pip install keyrings.google-artifactregistry-auth
           .venv/bin/pip install -e . --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
 
       - name: Run A2A Deploy Script
-        if: steps.changes.outputs.agents == 'true'
+        if: steps.changes.outputs.agents == 'true' && steps.check_agents.outputs.AGENTS_EXIST != 'true'
         id: deploy_agents
         env:
           PROJECT_ID: ${{ env.PROJECT_ID }}
@@ -236,15 +378,15 @@ jobs:
         run: |
           .venv/bin/python deployment/deploy_agents.py
 
-      # 4. Deploy Frontend (only if code changed)
+      # 5. Deploy Frontend (only if code changed AND service not already deployed)
       - name: Build Frontend Image
-        if: steps.changes.outputs.frontend == 'true'
+        if: steps.changes.outputs.frontend == 'true' && steps.check_services.outputs.FRONTEND_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/frontend \
             --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-memory \
             --project ${{ env.PROJECT_ID }}
 
-      # 5. Deploy Infrastructure via Terraform (only if config changed)
+      # 6. Deploy Infrastructure via Terraform (only if config changed)
       - name: Setup Terraform
         if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
         uses: hashicorp/setup-terraform@v3
@@ -264,6 +406,38 @@ jobs:
             -backend-config="prefix=a2a-multiagent-adk-memory-cicd/prod"
         working-directory: deployment/terraform
 
+      - name: Import existing Cloud Run services into Terraform state
+        if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
+        working-directory: deployment/terraform
+        run: |
+          terraform import \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
+            google_cloud_run_v2_service.cocktail_mcp_server \
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-memory" 2>/dev/null || true
+          terraform import \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
+            google_cloud_run_v2_service.weather_mcp_server \
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-memory" 2>/dev/null || true
+          terraform import \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
+            google_cloud_run_v2_service.a2a_frontend \
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-memory" 2>/dev/null || true
+
       - name: Terraform Apply
         if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
         run: |
@@ -273,5 +447,5 @@ jobs:
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}"
+            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}"
         working-directory: deployment/terraform
