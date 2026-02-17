@@ -75,12 +75,27 @@ resource "google_cloud_run_v2_service" "a2a_frontend" {
     timeout = "300s"
     containers {
       image = "us-docker.pkg.dev/cloudrun/container/hello"
-      
+
       env {
         name  = "AGENT_ENGINE_ID"
         # This will be injected dynamically if deploying agents outside Terraform,
         # or replaced by a known value if deployed within Terraform
         value = var.agent_engine_id
+      }
+
+      env {
+        name  = "PROJECT_ID"
+        value = var.cicd_runner_project_id
+      }
+
+      env {
+        name  = "PROJECT_NUMBER"
+        value = data.google_project.project.number
+      }
+
+      env {
+        name  = "GOOGLE_CLOUD_LOCATION"
+        value = var.region
       }
 
       resources {
