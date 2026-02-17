@@ -8,7 +8,7 @@ on:
 
 env:
   REGION: us-central1
-  SERVICE_NAME: a2a-frontend-adk-memory
+  SERVICE_NAME: a2a-frontend-adk-mb
   PYTHON_VERSION: '3.12'
 
 jobs:
@@ -67,7 +67,7 @@ jobs:
         id: check_services
         run: |
           # Check Cocktail MCP Server
-          CT_IMAGE=$(gcloud run services describe cocktail-remote-mcp-server-adk-memory \
+          CT_IMAGE=$(gcloud run services describe cocktail-remote-mcp-server-adk-mb \
             --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
             --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
           if [ -n "$CT_IMAGE" ] && [ "$CT_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
@@ -78,7 +78,7 @@ jobs:
           fi
 
           # Check Weather MCP Server
-          WEA_IMAGE=$(gcloud run services describe weather-remote-mcp-server-adk-memory \
+          WEA_IMAGE=$(gcloud run services describe weather-remote-mcp-server-adk-mb \
             --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
             --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
           if [ -n "$WEA_IMAGE" ] && [ "$WEA_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
@@ -89,7 +89,7 @@ jobs:
           fi
 
           # Check Frontend
-          FE_IMAGE=$(gcloud run services describe a2a-frontend-adk-memory \
+          FE_IMAGE=$(gcloud run services describe a2a-frontend-adk-mb \
             --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
             --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
           if [ -n "$FE_IMAGE" ] && [ "$FE_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
@@ -106,7 +106,7 @@ jobs:
           HOSTING_AGENT=$(curl -s \
             -H "Authorization: Bearer $(gcloud auth print-access-token)" \
             "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
-            | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent adk-memory - ADK") | .name' \
+            | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent adk-mb - ADK") | .name' \
             | head -1)
           if [ -n "$HOSTING_AGENT" ]; then
             echo "AGENTS_EXIST=true" >> $GITHUB_OUTPUT
@@ -122,14 +122,14 @@ jobs:
         if: steps.changes.outputs.cocktail_mcp == 'true' && steps.check_services.outputs.COCKTAIL_MCP_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/mcp_servers/cocktail_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-memory \
+            --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb \
             --project ${{ env.PROJECT_ID }}
 
       - name: Deploy Weather MCP Server
         if: steps.changes.outputs.weather_mcp == 'true' && steps.check_services.outputs.WEATHER_MCP_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/mcp_servers/weather_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-memory \
+            --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb \
             --project ${{ env.PROJECT_ID }}
 
       # 4. Deploy A2A Agents (only if code changed AND agents don't already exist)
@@ -153,8 +153,8 @@ jobs:
           PROJECT_ID: ${{ env.PROJECT_ID }}
           PROJECT_NUMBER: ${{ env.PROJECT_NUMBER }}
           GOOGLE_CLOUD_REGION: ${{ env.REGION }}
-          CT_MCP_SERVER_URL: 'https://cocktail-remote-mcp-server-adk-memory-${{ env.PROJECT_NUMBER }}.${{ env.REGION }}.run.app/mcp/'
-          WEA_MCP_SERVER_URL: 'https://weather-remote-mcp-server-adk-memory-${{ env.PROJECT_NUMBER }}.${{ env.REGION }}.run.app/mcp/'
+          CT_MCP_SERVER_URL: 'https://cocktail-remote-mcp-server-adk-mb-${{ env.PROJECT_NUMBER }}.${{ env.REGION }}.run.app/mcp/'
+          WEA_MCP_SERVER_URL: 'https://weather-remote-mcp-server-adk-mb-${{ env.PROJECT_NUMBER }}.${{ env.REGION }}.run.app/mcp/'
           PYTHONPATH: src
         run: |
           .venv/bin/python deployment/deploy_agents.py
@@ -164,7 +164,7 @@ jobs:
         if: steps.changes.outputs.frontend == 'true' && steps.check_services.outputs.FRONTEND_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/frontend \
-            --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-memory \
+            --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb \
             --project ${{ env.PROJECT_ID }}
 
       # 6. Deploy Infrastructure via Terraform (only if config changed)
@@ -199,7 +199,7 @@ jobs:
             -var="repository_owner=wadave" \
             -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
             google_cloud_run_v2_service.cocktail_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-memory" 2>/dev/null || true
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
           terraform import \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
@@ -208,7 +208,7 @@ jobs:
             -var="repository_owner=wadave" \
             -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
             google_cloud_run_v2_service.weather_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-memory" 2>/dev/null || true
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
           terraform import \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
@@ -217,7 +217,7 @@ jobs:
             -var="repository_owner=wadave" \
             -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
             google_cloud_run_v2_service.a2a_frontend \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-memory" 2>/dev/null || true
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
 
       - name: Terraform Apply
         if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
@@ -286,7 +286,7 @@ jobs:
         id: check_services
         run: |
           # Check Cocktail MCP Server
-          CT_IMAGE=$(gcloud run services describe cocktail-remote-mcp-server-adk-memory \
+          CT_IMAGE=$(gcloud run services describe cocktail-remote-mcp-server-adk-mb \
             --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
             --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
           if [ -n "$CT_IMAGE" ] && [ "$CT_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
@@ -297,7 +297,7 @@ jobs:
           fi
 
           # Check Weather MCP Server
-          WEA_IMAGE=$(gcloud run services describe weather-remote-mcp-server-adk-memory \
+          WEA_IMAGE=$(gcloud run services describe weather-remote-mcp-server-adk-mb \
             --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
             --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
           if [ -n "$WEA_IMAGE" ] && [ "$WEA_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
@@ -308,7 +308,7 @@ jobs:
           fi
 
           # Check Frontend
-          FE_IMAGE=$(gcloud run services describe a2a-frontend-adk-memory \
+          FE_IMAGE=$(gcloud run services describe a2a-frontend-adk-mb \
             --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
             --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || echo "")
           if [ -n "$FE_IMAGE" ] && [ "$FE_IMAGE" != "us-docker.pkg.dev/cloudrun/container/hello" ]; then
@@ -325,7 +325,7 @@ jobs:
           HOSTING_AGENT=$(curl -s \
             -H "Authorization: Bearer $(gcloud auth print-access-token)" \
             "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines" \
-            | jq -r '.reasoningEngines[] | select(.displayName == "Hosting Agent adk-memory - ADK") | .name' \
+            | jq -r '.reasoningEngines[] | select(.displayName == "Hosting Agent adk-mb - ADK") | .name' \
             | head -1)
           if [ -n "$HOSTING_AGENT" ]; then
             echo "AGENTS_EXIST=true" >> $GITHUB_OUTPUT
@@ -341,14 +341,14 @@ jobs:
         if: steps.changes.outputs.cocktail_mcp == 'true' && steps.check_services.outputs.COCKTAIL_MCP_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/mcp_servers/cocktail_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-memory \
+            --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb \
             --project ${{ env.PROJECT_ID }}
 
       - name: Deploy Weather MCP Server
         if: steps.changes.outputs.weather_mcp == 'true' && steps.check_services.outputs.WEATHER_MCP_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/mcp_servers/weather_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-memory \
+            --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb \
             --project ${{ env.PROJECT_ID }}
 
       # 4. Deploy A2A Agents (only if code changed AND agents don't already exist)
@@ -372,8 +372,8 @@ jobs:
           PROJECT_ID: ${{ env.PROJECT_ID }}
           PROJECT_NUMBER: ${{ env.PROJECT_NUMBER }}
           GOOGLE_CLOUD_REGION: ${{ env.REGION }}
-          CT_MCP_SERVER_URL: 'https://cocktail-remote-mcp-server-adk-memory-${{ env.PROJECT_NUMBER }}.${{ env.REGION }}.run.app/mcp/'
-          WEA_MCP_SERVER_URL: 'https://weather-remote-mcp-server-adk-memory-${{ env.PROJECT_NUMBER }}.${{ env.REGION }}.run.app/mcp/'
+          CT_MCP_SERVER_URL: 'https://cocktail-remote-mcp-server-adk-mb-${{ env.PROJECT_NUMBER }}.${{ env.REGION }}.run.app/mcp/'
+          WEA_MCP_SERVER_URL: 'https://weather-remote-mcp-server-adk-mb-${{ env.PROJECT_NUMBER }}.${{ env.REGION }}.run.app/mcp/'
           PYTHONPATH: src
         run: |
           .venv/bin/python deployment/deploy_agents.py
@@ -383,7 +383,7 @@ jobs:
         if: steps.changes.outputs.frontend == 'true' && steps.check_services.outputs.FRONTEND_EXISTS != 'true'
         run: |
           gcloud builds submit ./src/frontend \
-            --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-memory \
+            --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb \
             --project ${{ env.PROJECT_ID }}
 
       # 6. Deploy Infrastructure via Terraform (only if config changed)
@@ -418,7 +418,7 @@ jobs:
             -var="repository_owner=wadave" \
             -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
             google_cloud_run_v2_service.cocktail_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-memory" 2>/dev/null || true
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
           terraform import \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
@@ -427,7 +427,7 @@ jobs:
             -var="repository_owner=wadave" \
             -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
             google_cloud_run_v2_service.weather_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-memory" 2>/dev/null || true
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
           terraform import \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
@@ -436,7 +436,7 @@ jobs:
             -var="repository_owner=wadave" \
             -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
             google_cloud_run_v2_service.a2a_frontend \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-memory" 2>/dev/null || true
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
 
       - name: Terraform Apply
         if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'

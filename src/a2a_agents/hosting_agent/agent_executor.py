@@ -133,6 +133,7 @@ class HostingAgentExecutor(AdkOrchestratorAgentExecutor):
 
         agent_engine = client.agent_engines.create(
             config={
+                "display_name": "Hosting Agent Engine",
                 "context_spec": {
                     "memory_bank_config": {
                         "generation_config": {

@@ -1,7 +1,7 @@
 # Cloud Run Service for Cocktail MCP Server
 resource "google_cloud_run_v2_service" "cocktail_mcp_server" {
   deletion_protection = false
-  name     = "cocktail-remote-mcp-server-adk-memory"
+  name     = "cocktail-remote-mcp-server-adk-mb"
   location = var.region
   project  = var.cicd_runner_project_id
 
@@ -34,7 +34,7 @@ resource "google_cloud_run_v2_service" "cocktail_mcp_server" {
 # Cloud Run Service for Weather MCP Server
 resource "google_cloud_run_v2_service" "weather_mcp_server" {
   deletion_protection = false
-  name     = "weather-remote-mcp-server-adk-memory"
+  name     = "weather-remote-mcp-server-adk-mb"
   location = var.region
   project  = var.cicd_runner_project_id
 
@@ -67,7 +67,7 @@ resource "google_cloud_run_v2_service" "weather_mcp_server" {
 # Cloud Run Service for the A2A Frontend
 resource "google_cloud_run_v2_service" "a2a_frontend" {
   deletion_protection = false
-  name     = "a2a-frontend-adk-memory"
+  name     = "a2a-frontend-adk-mb"
   location = var.region
   project  = var.cicd_runner_project_id
 

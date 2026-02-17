@@ -194,8 +194,9 @@ def main():
         sys.exit(1)
 
     # Build URL endpoints for the agents based on their resource name
-    ct_agent_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{ct_agent_name}:query"
-    wea_agent_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{wea_agent_name}:query"
+    # Use /a2a endpoint for A2A protocol communication
+    ct_agent_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{ct_agent_name}/a2a"
+    wea_agent_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{wea_agent_name}/a2a"
 
     # Deploy Hosting Agent
     try:

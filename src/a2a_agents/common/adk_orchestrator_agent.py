@@ -166,7 +166,7 @@ class AdkOrchestratorAgent:
             tools=[
                 self.list_remote_agents,
                 self.send_message,
-                adk.tools.preload_memory_tool.PreloadMemoryTool(),
+                adk.tools.preload_memory,
             ],
             after_agent_callback=auto_save_session_to_memory_callback,
         )

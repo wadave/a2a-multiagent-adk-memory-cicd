@@ -55,7 +55,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
     """
 
     def __init__(
-        self, remote_agent_addresses: list[str], agent_engine_id: str = None
+        self, remote_agent_addresses: list[str], agent_engine_id: str | None = None
     ) -> None:
         """Initialize with lazy loading pattern.
 
@@ -69,8 +69,18 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         self.runner = None
         self.agent_engine_id = agent_engine_id
 
+        self.project_id = os.environ.get("PROJECT_ID")
+        self.location = os.environ.get("LOCATION")
+
         if self.agent_engine_id is None:
-            self.agent_engine_id = self.get_agent_engine()
+            # Check environment variable first (may be set on Vertex AI or during deploy)
+            self.agent_engine_id = os.environ.get("AGENT_ENGINE_ID")
+            
+            # If still None, we don't auto-create here to avoid resource leaks
+            # during local instantiation/deployment. We'll fallback to in-memory
+            # services in _init_agent if no ID is available.
+            if self.agent_engine_id:
+                logging.info(f"Using agent_engine_id from environment: {self.agent_engine_id}")
 
     @abstractmethod
     def get_agent_engine(self) -> str:
@@ -104,21 +114,29 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             )
 
             # Configure memory and session services
+            project_id = self.project_id or os.environ.get("PROJECT_ID", "")
+            location = self.location or os.environ.get("LOCATION", "us-central1")
+
             if self.agent_engine_id:
                 # Use Vertex AI Memory Bank and Session Service for production
                 my_memory_service = PersistentVertexAiMemoryBankService(
-                    project=os.environ.get("PROJECT_ID"),
-                    location=os.environ.get("LOCATION"),
+                    project=project_id,
+                    location=location,
                     agent_engine_id=self.agent_engine_id,
                 )
 
                 my_session_service = VertexAiSessionService(
-                    project=os.environ.get("PROJECT_ID"),
-                    location=os.environ.get("LOCATION"),
+                    project=project_id,
+                    location=location,
                     agent_engine_id=self.agent_engine_id,
                 )
             else:
-                # Use in-memory services for local testing
+                # Fallback to in-memory services if no engine ID is available
+                # This is useful for local testing or when memory persistence is not required
+                logging.warning(
+                    "No agent_engine_id provided. Using in-memory services. "
+                    "Memories will NOT be persisted in Vertex AI."
+                )
                 my_memory_service = InMemoryMemoryService()
                 my_session_service = InMemorySessionService()
 
@@ -144,15 +162,22 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         2. A streaming request is made (message/stream)
         """
         # Initialize agent on first call
-        if self.agent is None:
+        if self.agent is None or self.runner is None:
             await self._init_agent()
+        
+        # Ensure we have a runner and agent after init
+        if not self.runner or not self.agent:
+            raise ServerError(message="Agent executor failed to initialize")
 
         # Extract the user's question from the protocol message
         query = context.get_user_input()
         logging.info(f"Received query: {query}")
 
+        task_id = context.task_id or "default_task"
+        context_id = context.context_id or "default_context"
+
         # Create a TaskUpdater for managing task state
-        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
+        updater = TaskUpdater(event_queue, task_id, context_id)
 
         # Update task status through its lifecycle
         # submitted -> working -> completed/failed
@@ -165,7 +190,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
 
         try:
             # Get or create a session for this conversation
-            session = await self._get_or_create_session(context.context_id)
+            session = await self._get_or_create_session(context_id)
             logging.info(f"Using session: {session.id}")
 
             # Prepare the user message in ADK format
@@ -174,7 +199,14 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             # Run the agent asynchronously
             # This may involve multiple LLM calls and tool uses
             answer_sent = False
-            async for event in self.runner.run_async(
+            
+            # self.runner is guaranteed to be not None here due to check above
+            # but we use a local variable to satisfy the linter
+            runner = self.runner
+            if runner is None:
+                raise ServerError(message="Runner not initialized")
+
+            async for event in runner.run_async(
                 session_id=session.id,
                 user_id="user",  # In production, use actual user ID
                 new_message=content,
@@ -190,7 +222,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
                     # Artifacts are the "outputs" or "results" of a task
                     # They're separate from status messages
                     await updater.add_artifact(
-                        [TextPart(text=answer)],
+                        [TextPart(text=answer)], # type: ignore
                         name="answer",  # Name helps clients identify artifacts
                     )
 
@@ -217,18 +249,22 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         session resource name requirements. The session service will generate
         a valid session ID.
         """
-        if isinstance(self.runner.session_service, InMemorySessionService):
+        runner = self.runner
+        if runner is None:
+             raise ServerError(message="Runner not initialized")
+
+        if isinstance(runner.session_service, InMemorySessionService):
             # For in-memory sessions, we can use the context_id directly
-            session = await self.runner.session_service.get_session(
-                app_name=self.runner.app_name,
+            session = await runner.session_service.get_session(
+                app_name=runner.app_name,
                 user_id="user",
                 session_id=context_id,
             )
 
             if not session:
                 logging.info(f"No session found for {context_id}, creating new one.")
-                session = await self.runner.session_service.create_session(
-                    app_name=self.runner.app_name,
+                session = await runner.session_service.create_session(
+                    app_name=runner.app_name,
                     user_id="user",
                     session_id=context_id,
                 )
@@ -238,8 +274,8 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             # For Vertex AI Session Service, create a new session without passing session_id
             # Let Vertex AI generate a valid session resource name
             logging.info(f"Creating new session for context {context_id}.")
-            session = await self.runner.session_service.create_session(
-                app_name=self.runner.app_name,
+            session = await runner.session_service.create_session(
+                app_name=runner.app_name,
                 user_id="user",
                 # Don't pass session_id - let Vertex AI generate a valid one
             )

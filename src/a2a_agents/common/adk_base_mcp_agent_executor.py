@@ -31,10 +31,8 @@ from google.adk.artifacts import InMemoryArtifactService
 from google.adk.memory import VertexAiMemoryBankService
 from google.adk.sessions import VertexAiSessionService
 from google.genai import Client
-from google.adk.tools.mcp_tool.mcp_toolset import (
-    McpToolset,
-    StreamableHTTPConnectionParams,
-)
+from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
+from google.adk.tools.mcp_tool.mcp_toolset import McpToolset
 from google.auth import exceptions as google_auth_exceptions
 from google.auth.transport import requests as google_auth_requests
 from google.genai import types
@@ -90,6 +88,39 @@ def get_gcp_auth_headers(audience: str) -> Dict[str, str]:
 class PersistentVertexAiMemoryBankService(VertexAiMemoryBankService):
     """
     Fixed version of VertexAiMemoryBankService that keeps the httpx client alive.
+
+    The original implementation creates a new Client (and httpx client) for each request,
+    which causes "Cannot send a request, as the client has been closed" errors in
+    deployed Agent Engine environments.
+
+    This subclass maintains a single persistent Client (and thus API client) for the
+    lifetime of the service, preventing premature httpx client closure.
+    """
+
+    def __init__(
+        self, project: str = None, location: str = None, agent_engine_id: str = None
+    ):
+        super().__init__(
+            project=project, location=location, agent_engine_id=agent_engine_id
+        )
+        # Create and cache both the Client and API client once
+        self._persistent_client = None
+        self._persistent_api_client = None
+
+    def _get_api_client(self):
+        """Override to return a persistent API client instead of creating new ones."""
+        if self._persistent_api_client is None:
+            # Keep the Client object alive to prevent httpx client closure
+            self._persistent_client = Client(
+                vertexai=True, project=self._project, location=self._location
+            )
+            self._persistent_api_client = self._persistent_client._api_client
+        return self._persistent_api_client
+
+
+class PersistentVertexAiSessionService(VertexAiSessionService):
+    """
+    Fixed version of VertexAiSessionService that keeps the httpx client alive.
 
     The original implementation creates a new Client (and httpx client) for each request,
     which causes "Cannot send a request, as the client has been closed" errors in
@@ -194,7 +225,15 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         self.location = os.environ.get("LOCATION")
 
         if self.agent_engine_id is None:
-            self.agent_engine_id = self.get_agent_engine()
+            # Check environment variable first (may be set on Vertex AI or during deploy)
+            self.agent_engine_id = os.environ.get("AGENT_ENGINE_ID")
+            
+            # If still None, we don't auto-create here to avoid resource leaks
+            # during local instantiation/deployment. We'll fallback to in-memory
+            # services in _init_agent if no ID is available.
+            if self.agent_engine_id:
+                logging.info(f"Using agent_engine_id from environment: {self.agent_engine_id}")
+
 
     @abstractmethod
     def get_agent_config(self) -> Dict:
@@ -225,6 +264,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
 
         agent_engine = client.agent_engines.create(
             config={
+                "display_name": f"{self.get_agent_config().get('name', 'Adk Base Mcp Agent')} Engine",
                 "context_spec": {
                     "memory_bank_config": {
                         "generation_config": {
@@ -249,18 +289,32 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
             # Get agent configuration
             config = self.get_agent_config()
 
-            # Use custom memory service that keeps httpx client alive
-            my_memory_service = PersistentVertexAiMemoryBankService(
-                project=os.environ.get("PROJECT_ID"),
-                location=os.environ.get("LOCATION"),
-                agent_engine_id=self.agent_engine_id,
-            )
+            # Configure memory and session services
+            if self.agent_engine_id:
+                # Use custom memory service that keeps httpx client alive
+                my_memory_service = PersistentVertexAiMemoryBankService(
+                    project=os.environ.get("PROJECT_ID"),
+                    location=os.environ.get("LOCATION"),
+                    agent_engine_id=self.agent_engine_id,
+                )
 
-            my_session_service = VertexAiSessionService(
-                project=os.environ.get("PROJECT_ID"),
-                location=os.environ.get("LOCATION"),
-                agent_engine_id=self.agent_engine_id,
-            )
+                # Use regular session service (httpx closure is not an issue for sessions)
+                my_session_service = VertexAiSessionService(
+                    project=os.environ.get("PROJECT_ID"),
+                    location=os.environ.get("LOCATION"),
+                    agent_engine_id=self.agent_engine_id,
+                )
+            else:
+                # Fallback to in-memory services if no engine ID is available
+                # This is useful for local testing or when memory persistence is not required
+                logging.warning(
+                    "No agent_engine_id provided. Using in-memory services. "
+                    "Memories will NOT be persisted in Vertex AI."
+                )
+                from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
+                from google.adk.sessions.in_memory_session_service import InMemorySessionService
+                my_memory_service = InMemoryMemoryService()
+                my_session_service = InMemorySessionService()
 
             # --- Environment setup ---
             mcp_url = os.getenv(config["mcp_url_env_var"])
@@ -321,7 +375,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                     McpToolset(
                         connection_params=mcp_server_params,
                     ),
-                    adk.tools.preload_memory_tool.PreloadMemoryTool(),
+                    adk.tools.preload_memory,
                 ],
                 after_agent_callback=auto_save_session_to_memory_callback,
             )
@@ -352,8 +406,12 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         2. A streaming request is made (message/stream)
         """
         # Initialize agent on first call
-        if self.agent is None:
+        if self.agent is None or self.runner is None:
             self._init_agent()
+        
+        # Ensure we have a runner and agent after init
+        if not self.runner or not self.agent:
+            raise ServerError(message="Agent executor failed to initialize")
 
         # Extract the user's question from the protocol message
         query = context.get_user_input()
@@ -385,7 +443,13 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
             # Run the agent asynchronously
             # This may involve multiple LLM calls and tool uses
             answer_sent = False
-            async for event in self.runner.run_async(
+            
+            # Use local variable for type safety
+            runner = self.runner
+            if runner is None:
+                 raise ServerError(message="Runner not initialized")
+
+            async for event in runner.run_async(
                 session_id=session.id,
                 user_id="user",  # In production, use actual user ID
                 new_message=content,
@@ -430,20 +494,25 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         fresh_headers = self.token_manager.get_headers()
 
         # Update the toolset connection params (using private attribute)
-        for tool in self.agent.tools:
-            if isinstance(tool, McpToolset):
-                # Access private attribute to update headers
-                if hasattr(tool._connection_params, "headers"):
-                    tool._connection_params.headers = fresh_headers
-                    logging.debug("Refreshed MCP authentication headers")
+        if self.agent and self.agent.tools:
+            for tool in self.agent.tools:
+                if isinstance(tool, McpToolset):
+                    # Access private attribute to update headers
+                    if hasattr(tool, "_connection_params") and hasattr(tool._connection_params, "headers"):
+                        tool._connection_params.headers = fresh_headers
+                        logging.debug("Refreshed MCP authentication headers")
 
     async def _get_or_create_session(self, context_id: str):
         """Get existing session or create new one."""
+        runner = self.runner
+        if runner is None:
+             raise ServerError(message="Runner not initialized")
+
         # For Vertex AI Session Service, don't pass session_id to get_session
         # Instead, create a new session each time (stateless per A2A context)
         logging.info(f"Creating new session for context {context_id}.")
-        session = await self.runner.session_service.create_session(
-            app_name=self.runner.app_name,
+        session = await runner.session_service.create_session(
+            app_name=runner.app_name,
             user_id="user",
             # Don't pass session_id - let Vertex AI generate a valid one
         )

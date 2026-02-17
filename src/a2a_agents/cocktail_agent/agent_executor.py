@@ -147,6 +147,7 @@ class CocktailAgentExecutor(AdkBaseMcpAgentExecutor):
 
         agent_engine = client.agent_engines.create(
             config={
+                "display_name": f"{self.get_agent_config()['name']} Engine",
                 "context_spec": {
                     "memory_bank_config": {
                         "generation_config": {
