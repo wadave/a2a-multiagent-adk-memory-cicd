@@ -137,6 +137,25 @@ Here are some example questions you can ask the chatbot:
 
 ## Setup and Deployment
 
+### Quick Setup Summary
+
+**Choose your path:**
+
+1. **For Local Testing & Development**:
+   - Copy `.env.example` to `.env` and fill in your values
+   - Install dependencies: `pip install -e .`
+   - Run tests: `pytest tests/unit/ -v`
+
+2. **For Manual Deployment**:
+   - Set up environment variables (see [Environment Variables Setup](#environment-variables-setup))
+   - Deploy MCP servers → Deploy agents → Deploy frontend
+   - Configure IAM permissions
+
+3. **For CI/CD (Automated Deployment)**:
+   - **Easy way**: Run `uvx agent-starter-pack setup-cicd` (recommended)
+   - **Manual way**: Follow [CICD_SETUP_GUIDE.md](CICD_SETUP_GUIDE.md)
+   - Push to `staging` or `main` branch to trigger deployment
+
 ### Prerequisites
 
 Before deploying, ensure you have:
@@ -150,25 +169,83 @@ Before deploying, ensure you have:
    - Artifact Registry API enabled
    - Workload Identity Federation configured (for CI/CD)
 
-### Manual Deployment
+### Environment Variables Setup
 
-#### 1. Set Up Environment Variables
+#### For Local Testing
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root for local development and testing:
 
 ```bash
-PROJECT_ID="your-project-id"
-PROJECT_NUMBER="your-project-number"
-GOOGLE_CLOUD_REGION="us-central1"
-BUCKET_NAME="your-bucket-name"
-CT_MCP_SERVER_URL="https://cocktail-remote-mcp-server-adk-mb-{PROJECT_NUMBER}.{REGION}.run.app/mcp/sse"
-WEA_MCP_SERVER_URL="https://weather-remote-mcp-server-adk-mb-{PROJECT_NUMBER}.{REGION}.run.app/mcp/sse"
-GOOGLE_GENAI_MODEL="gemini-2.5-flash"
+# Copy the example file
+cp .env.example .env
 ```
 
-#### 2. Deploy MCP Servers
+Then edit `.env` with your values:
 
-Navigate to each MCP server directory and deploy to Cloud Run:
+```bash
+# Choose Model Backend: 0 -> ML Dev, 1 -> Vertex AI
+GOOGLE_GENAI_USE_VERTEXAI=1
+
+# ML Dev backend config (if using ML Dev)
+GOOGLE_API_KEY=your-api-key-here
+
+# Vertex AI backend config (recommended)
+GOOGLE_CLOUD_PROJECT="your-project-id"
+GOOGLE_CLOUD_LOCATION="us-central1"
+
+# Project configuration
+PROJECT_NUMBER="your-project-number"
+
+# MCP Server names (will be auto-generated URLs after deployment)
+COCKTAIL_REMOTE_MCP_SERVER_NAME='cocktail-remote-mcp-server-adk-mb'
+WEATHER_REMOTE_MCP_SERVER_NAME='weather-remote-mcp-server-adk-mb'
+```
+
+**How to get these values:**
+
+```bash
+# Get your project ID (if you don't know it)
+gcloud config get-value project
+
+# Get your project number
+gcloud projects describe YOUR_PROJECT_ID --format="value(projectNumber)"
+
+# Set your active project
+gcloud config set project YOUR_PROJECT_ID
+```
+
+#### For Deployment (Cloud Run & Agent Engine)
+
+For deployment, you'll need to set environment variables in your deployment environment:
+
+1. **MCP Server URLs** (generated after deploying MCP servers):
+   ```bash
+   CT_MCP_SERVER_URL="https://cocktail-remote-mcp-server-adk-mb-PROJECT_NUMBER.us-central1.run.app/mcp/sse"
+   WEA_MCP_SERVER_URL="https://weather-remote-mcp-server-adk-mb-PROJECT_NUMBER.us-central1.run.app/mcp/sse"
+   ```
+
+2. **Frontend Environment Variables** (for Cloud Run deployment):
+   ```bash
+   PROJECT_ID="your-project-id"
+   PROJECT_NUMBER="your-project-number"
+   GOOGLE_CLOUD_LOCATION="us-central1"
+   AGENT_ENGINE_ID="your-hosting-agent-id"  # Generated after deploying agents
+   ```
+
+These will be set automatically during CI/CD or manually during deployment.
+
+### Manual Deployment
+
+#### 1. Deploy MCP Servers
+
+Deploy both MCP servers to Cloud Run. Make sure you have set your `PROJECT_ID` environment variable:
+
+```bash
+export PROJECT_ID="your-project-id"
+export GOOGLE_CLOUD_REGION="us-central1"
+```
+
+Then deploy the servers:
 
 ```bash
 # Deploy Cocktail MCP Server
@@ -176,25 +253,53 @@ cd src/mcp_servers/cocktail_mcp_server
 gcloud builds submit --tag gcr.io/$PROJECT_ID/cocktail-remote-mcp-server-adk-mb
 gcloud run deploy cocktail-remote-mcp-server-adk-mb \
   --image gcr.io/$PROJECT_ID/cocktail-remote-mcp-server-adk-mb \
-  --region us-central1 \
-  --platform managed
+  --region $GOOGLE_CLOUD_REGION \
+  --platform managed \
+  --allow-unauthenticated
 
 # Deploy Weather MCP Server
 cd ../weather_mcp_server
 gcloud builds submit --tag gcr.io/$PROJECT_ID/weather-remote-mcp-server-adk-mb
 gcloud run deploy weather-remote-mcp-server-adk-mb \
   --image gcr.io/$PROJECT_ID/weather-remote-mcp-server-adk-mb \
-  --region us-central1 \
-  --platform managed
+  --region $GOOGLE_CLOUD_REGION \
+  --platform managed \
+  --allow-unauthenticated
+
+# Return to project root
+cd ../../..
 ```
 
-#### 3. Deploy A2A Agents
+**Save the MCP server URLs** - you'll need them for agent deployment:
+
+```bash
+# Get the URLs
+export CT_MCP_SERVER_URL=$(gcloud run services describe cocktail-remote-mcp-server-adk-mb \
+  --region $GOOGLE_CLOUD_REGION \
+  --format="value(status.url)")/mcp/sse
+
+export WEA_MCP_SERVER_URL=$(gcloud run services describe weather-remote-mcp-server-adk-mb \
+  --region $GOOGLE_CLOUD_REGION \
+  --format="value(status.url)")/mcp/sse
+
+echo "Cocktail MCP Server URL: $CT_MCP_SERVER_URL"
+echo "Weather MCP Server URL: $WEA_MCP_SERVER_URL"
+```
+
+#### 2. Deploy A2A Agents
 
 Install dependencies and deploy agents to Vertex AI Agent Engine:
 
 ```bash
-# Install dependencies
+# Install dependencies (use uv for faster installation, or pip)
+uv pip install -e .
+# OR
 pip install -e .
+
+# Make sure your .env file is configured with the MCP server URLs
+# Update .env with the URLs from step 2:
+# CT_MCP_SERVER_URL="..."
+# WEA_MCP_SERVER_URL="..."
 
 # Deploy agents (cocktail, weather, and hosting)
 python deployment/deploy_agents.py
@@ -207,35 +312,59 @@ The deployment script will:
 - Configure Memory Bank integration
 - Set up agent-to-agent communication
 
-#### 4. Deploy Frontend
+**Save the Agent Engine ID** - you'll need it for frontend deployment. The script will output the hosting agent's ID at the end.
 
-Deploy the Gradio frontend to Cloud Run:
+#### 3. Deploy Frontend
+
+Deploy the Gradio frontend to Cloud Run using the values from previous steps:
 
 ```bash
+# Set the Agent Engine ID from step 3
+export AGENT_ENGINE_ID="your-hosting-agent-id"
+
+# Get PROJECT_NUMBER if not already set
+export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+
+# Deploy frontend
 cd src/frontend
 gcloud run deploy a2a-frontend-adk-mb \
   --source . \
-  --region us-central1 \
+  --region $GOOGLE_CLOUD_REGION \
   --platform managed \
   --allow-unauthenticated \
-  --set-env-vars "PROJECT_ID=$PROJECT_ID,PROJECT_NUMBER=$PROJECT_NUMBER,AGENT_ENGINE_ID=<hosting-agent-id>,GOOGLE_CLOUD_LOCATION=us-central1"
+  --set-env-vars "PROJECT_ID=$PROJECT_ID,PROJECT_NUMBER=$PROJECT_NUMBER,AGENT_ENGINE_ID=$AGENT_ENGINE_ID,GOOGLE_CLOUD_LOCATION=$GOOGLE_CLOUD_REGION"
+
+# Return to project root
+cd ../..
+
+# Get the frontend URL
+gcloud run services describe a2a-frontend-adk-mb \
+  --region $GOOGLE_CLOUD_REGION \
+  --format="value(status.url)"
 ```
 
-#### 5. Configure IAM Permissions
+#### 4. Configure IAM Permissions
 
 Grant the compute service account permission to invoke MCP servers:
 
 ```bash
+# Make sure PROJECT_NUMBER is set
+export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+
+# Grant permissions for Cocktail MCP Server
 gcloud run services add-iam-policy-binding cocktail-remote-mcp-server-adk-mb \
-  --region us-central1 \
+  --region $GOOGLE_CLOUD_REGION \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/run.invoker"
 
+# Grant permissions for Weather MCP Server
 gcloud run services add-iam-policy-binding weather-remote-mcp-server-adk-mb \
-  --region us-central1 \
+  --region $GOOGLE_CLOUD_REGION \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/run.invoker"
 ```
+
+✅ **Deployment Complete!** Your application should now be running. Visit the frontend URL from step 4 to try it out.
 
 ### CI/CD Deployment (Recommended)
 
@@ -248,20 +377,39 @@ If CI/CD is already set up:
 1. **Push to staging**: `git push origin staging` → Deploys to staging environment
 2. **Push to main**: `git push origin main` → Deploys to production environment
 
-#### First-Time Setup
+#### First-Time CI/CD Setup
 
-If this is your first time setting up CI/CD, follow the complete guide:
+You have two options for setting up CI/CD:
+
+##### Option 1: Automated Setup (Recommended for Beginners)
+
+Use the `agent-starter-pack` CLI tool to automatically configure CI/CD:
+
+```bash
+# Install and run the setup tool
+uvx agent-starter-pack setup-cicd
+```
+
+This interactive tool will:
+- Create Workload Identity Pool and Provider
+- Configure service accounts with proper IAM roles
+- Set up GitHub environments and secrets
+- Guide you through the entire process step-by-step
+
+##### Option 2: Manual Setup (Advanced Users)
+
+Follow the complete manual setup guide:
 
 📘 **[CI/CD Setup Guide](CICD_SETUP_GUIDE.md)** - Complete step-by-step instructions
 
-The setup guide covers:
+The manual setup guide covers:
 - Google Cloud Workload Identity Federation configuration
 - Service account creation and IAM roles
 - GitHub environment and secrets configuration
 - Testing and troubleshooting
 - Security best practices
 
-**Quick overview**:
+**Manual setup overview**:
 
 1. **Setup Workload Identity Federation**:
    - Create Workload Identity Pool and Provider in GCP
@@ -269,9 +417,28 @@ The setup guide covers:
    - See [CICD_SETUP_GUIDE.md](CICD_SETUP_GUIDE.md) for detailed steps
 
 2. **Configure GitHub Environments**:
-   - Create `staging` and `production` environments
-   - Add environment variables (PROJECT_ID, PROJECT_NUMBER, etc.)
-   - Set up environment protection rules for production
+
+   Go to your GitHub repository → **Settings** → **Environments** and create two environments:
+
+   **Staging Environment:**
+   - Name: `staging`
+   - Environment variables:
+     - `PROJECT_ID`: Your staging GCP project ID (e.g., `dw-genai-dev`)
+     - `PROJECT_NUMBER`: Your staging project number
+     - `WORKLOAD_IDENTITY_PROVIDER`: WIF provider resource name (from step 1)
+     - `SERVICE_ACCOUNT`: `github-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com`
+   - Protection rules: None (for faster iteration)
+
+   **Production Environment:**
+   - Name: `production`
+   - Environment variables:
+     - `PROJECT_ID`: Your production GCP project ID (e.g., `dw-genai-prod`)
+     - `PROJECT_NUMBER`: Your production project number
+     - `WORKLOAD_IDENTITY_PROVIDER`: WIF provider resource name (from step 1)
+     - `SERVICE_ACCOUNT`: `github-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com`
+   - Protection rules:
+     - ✓ Required reviewers (recommended)
+     - ✓ Wait timer: 5 minutes (optional)
 
 3. **Trigger Deployment**:
    - Push to `staging` branch for staging deployment
