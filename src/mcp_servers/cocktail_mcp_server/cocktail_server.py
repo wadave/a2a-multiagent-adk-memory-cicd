@@ -199,8 +199,10 @@ async def shutdown_event():
 
 
 # --- Run Server ---
+import os
+
 if __name__ == '__main__':
-    # This now works because asyncio is imported
+    port = int(os.environ.get('PORT', 8080))
     asyncio.run(
-        mcp.run_async(transport='streamable-http', host='0.0.0.0', port=8080)
+        mcp.run_async(transport='streamable-http', host='0.0.0.0', port=port)
     )

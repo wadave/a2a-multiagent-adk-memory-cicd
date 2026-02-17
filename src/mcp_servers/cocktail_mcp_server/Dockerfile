@@ -11,5 +11,5 @@ WORKDIR /app
 COPY . /app
 ENV PATH="/app/.venv/bin:$PATH"
 RUN uv sync --no-install-project --index-url https://pypi.org/simple
-# Use shell form to allow environment variable expansion
-CMD uv run fastmcp run cocktail_server.py --host 0.0.0.0 --port ${PORT:-8080}
+# Run the Python file directly so __main__ block executes and reads PORT env var
+CMD ["uv", "run", "python", "cocktail_server.py"]
