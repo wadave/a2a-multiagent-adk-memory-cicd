@@ -62,12 +62,10 @@ resource "google_cloud_run_v2_service" "a2a_frontend" {
   template {
     timeout = "300s"
     containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello"
+      image = "gcr.io/${var.cicd_runner_project_id}/a2a-frontend-adk-mb:latest"
 
       env {
         name  = "AGENT_ENGINE_ID"
-        # This will be injected dynamically if deploying agents outside Terraform,
-        # or replaced by a known value if deployed within Terraform
         value = var.agent_engine_id
       }
 
@@ -98,12 +96,6 @@ resource "google_cloud_run_v2_service" "a2a_frontend" {
   traffic {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
     percent = 100
-  }
-
-  lifecycle {
-    ignore_changes = [
-      template[0].containers[0].image,
-    ]
   }
 }
  

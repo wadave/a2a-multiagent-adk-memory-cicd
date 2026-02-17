@@ -112,7 +112,70 @@ jobs:
             --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
-      # 4. Get MCP Server URLs dynamically
+      # 4. Deploy MCP Servers via Terraform (if images were built)
+      - name: Setup Terraform for MCP Deployment
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Ensure Terraform state bucket exists
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        run: |
+          gcloud storage buckets describe gs://${{ env.PROJECT_ID }}-terraform-state 2>/dev/null || \
+          gcloud storage buckets create gs://${{ env.PROJECT_ID }}-terraform-state \
+            --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
+
+      - name: Terraform Init for MCP Deployment
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
+            -backend-config="prefix=a2a-multiagent-adk-memory-cicd/staging"
+        working-directory: deployment/terraform
+
+      - name: Import existing MCP Cloud Run services
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
+        working-directory: deployment/terraform
+        run: |
+          # Use placeholder agent_engine_id for initial MCP deployment
+          terraform import \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=placeholder" \
+            google_cloud_run_v2_service.cocktail_mcp_server \
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
+
+          terraform import \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=placeholder" \
+            google_cloud_run_v2_service.weather_mcp_server \
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
+
+      - name: Terraform Apply MCP Servers
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
+        run: |
+          terraform apply -auto-approve \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=placeholder" \
+            -target=google_cloud_run_v2_service.cocktail_mcp_server \
+            -target=google_cloud_run_v2_service.weather_mcp_server \
+            -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_invoker \
+            -target=google_cloud_run_v2_service_iam_member.weather_mcp_invoker \
+            -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_compute_invoker \
+            -target=google_cloud_run_v2_service_iam_member.weather_mcp_compute_invoker
+        working-directory: deployment/terraform
+
+      # 5. Get MCP Server URLs (now that services exist)
       - name: Get MCP Server URLs
         id: mcp_urls
         run: |
@@ -142,7 +205,7 @@ jobs:
           echo "WEA_MCP_SERVER_URL=${WEA_URL}/mcp/sse" >> $GITHUB_OUTPUT
           echo "Weather MCP Server URL: ${WEA_URL}/mcp/sse"
 
-      # 5. Deploy A2A Agents (when code changed or MCP servers updated)
+      # 6. Deploy A2A Agents (when code changed or MCP servers updated)
       - name: Set up Python
         if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
         uses: actions/setup-python@v5
@@ -172,7 +235,7 @@ jobs:
           echo "  Weather: $WEA_MCP_SERVER_URL"
           .venv/bin/python deployment/deploy_agents.py
 
-      # 6. Get Agent Engine ID
+      # 7. Get Agent Engine ID
       - name: Get Agent Engine ID
         id: agent_id
         run: |
@@ -195,69 +258,20 @@ jobs:
           fi
           echo "AGENT_ENGINE_ID=$AGENT_ID" >> $GITHUB_OUTPUT
 
-      # 7. Deploy Frontend (when code changed or agents updated)
-      - name: Build and Deploy Frontend
+      # 8. Build Frontend Image (Terraform will deploy it)
+      - name: Build Frontend Image
         if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
         run: |
-          echo "Building Frontend..."
+          echo "Building Frontend image..."
           gcloud builds submit ./src/frontend \
-            --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb \
+            --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
-          echo "Deploying Frontend to Cloud Run with Agent Engine ID: ${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}"
-          gcloud run deploy a2a-frontend-adk-mb \
-            --image gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb \
-            --region ${{ env.REGION }} \
-            --platform managed \
-            --allow-unauthenticated \
-            --set-env-vars "PROJECT_ID=${{ env.PROJECT_ID }},PROJECT_NUMBER=${{ env.PROJECT_NUMBER }},AGENT_ENGINE_ID=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }},GOOGLE_CLOUD_LOCATION=${{ env.REGION }}" \
-            --project ${{ env.PROJECT_ID }}
-
-      # 8. Deploy Infrastructure via Terraform (when config changed or after deployments)
-      - name: Setup Terraform
-        if: steps.changes.outputs.terraform == 'true' || steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Ensure Terraform state bucket exists
-        if: steps.changes.outputs.terraform == 'true' || steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
-        run: |
-          gcloud storage buckets describe gs://${{ env.PROJECT_ID }}-terraform-state 2>/dev/null || \
-          gcloud storage buckets create gs://${{ env.PROJECT_ID }}-terraform-state \
-            --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
-
-      - name: Terraform Init
-        if: steps.changes.outputs.terraform == 'true' || steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
-        run: |
-          terraform init \
-            -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
-            -backend-config="prefix=a2a-multiagent-adk-memory-cicd/staging"
-        working-directory: deployment/terraform
-
-      - name: Import existing Cloud Run services into Terraform state
-        if: steps.changes.outputs.terraform == 'true' || steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
+      # 9. Deploy Frontend via Terraform (when frontend changed or after agent deployment)
+      - name: Import Frontend Cloud Run service
+        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
         working-directory: deployment/terraform
         run: |
-          # Import Cloud Run services if they exist
-          terraform import \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="staging_project_id=${{ env.PROJECT_ID }}" \
-            -var="prod_project_id=${{ env.PROJECT_ID }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
-            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
-            google_cloud_run_v2_service.cocktail_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
-
-          terraform import \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="staging_project_id=${{ env.PROJECT_ID }}" \
-            -var="prod_project_id=${{ env.PROJECT_ID }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
-            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
-            google_cloud_run_v2_service.weather_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
-
           terraform import \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
@@ -268,8 +282,23 @@ jobs:
             google_cloud_run_v2_service.a2a_frontend \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
 
-      - name: Terraform Apply
-        if: steps.changes.outputs.terraform == 'true' || steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
+      - name: Terraform Apply Frontend
+        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
+        run: |
+          terraform apply -auto-approve \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
+            -target=google_cloud_run_v2_service.a2a_frontend \
+            -target=google_cloud_run_v2_service_iam_member.frontend_invoker
+        working-directory: deployment/terraform
+
+      # 10. Apply full Terraform if Terraform config changed
+      - name: Terraform Apply All (if Terraform config changed)
+        if: steps.changes.outputs.terraform == 'true'
         run: |
           terraform apply -auto-approve \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
@@ -280,7 +309,7 @@ jobs:
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}"
         working-directory: deployment/terraform
 
-      # 9. Output deployment summary
+      # 12. Output deployment summary
       - name: Deployment Summary
         if: always()
         run: |
@@ -381,7 +410,6 @@ jobs:
 
       - name: Check existing Agent Engines
         id: check_agents
-        if: steps.changes.outputs.agents == 'true' || steps.changes.outputs.terraform == 'true'
         run: |
           HOSTING_AGENT=$(curl -s \
             -H "Authorization: Bearer $(gcloud auth print-access-token)" \
@@ -414,7 +442,70 @@ jobs:
             --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
-      # 4. Get MCP Server URLs dynamically
+      # 4. Deploy MCP Servers via Terraform (if images were built)
+      - name: Setup Terraform for MCP Deployment
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Ensure Terraform state bucket exists
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        run: |
+          gcloud storage buckets describe gs://${{ env.PROJECT_ID }}-terraform-state 2>/dev/null || \
+          gcloud storage buckets create gs://${{ env.PROJECT_ID }}-terraform-state \
+            --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
+
+      - name: Terraform Init for MCP Deployment
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
+            -backend-config="prefix=a2a-multiagent-adk-memory-cicd/prod"
+        working-directory: deployment/terraform
+
+      - name: Import existing MCP Cloud Run services
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
+        working-directory: deployment/terraform
+        run: |
+          # Use placeholder agent_engine_id for initial MCP deployment
+          terraform import \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=placeholder" \
+            google_cloud_run_v2_service.cocktail_mcp_server \
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
+
+          terraform import \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=placeholder" \
+            google_cloud_run_v2_service.weather_mcp_server \
+            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
+
+      - name: Terraform Apply MCP Servers
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
+        run: |
+          terraform apply -auto-approve \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=placeholder" \
+            -target=google_cloud_run_v2_service.cocktail_mcp_server \
+            -target=google_cloud_run_v2_service.weather_mcp_server \
+            -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_invoker \
+            -target=google_cloud_run_v2_service_iam_member.weather_mcp_invoker \
+            -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_compute_invoker \
+            -target=google_cloud_run_v2_service_iam_member.weather_mcp_compute_invoker
+        working-directory: deployment/terraform
+
+      # 5. Get MCP Server URLs (now that services exist)
       - name: Get MCP Server URLs
         id: mcp_urls
         run: |
@@ -444,7 +535,7 @@ jobs:
           echo "WEA_MCP_SERVER_URL=${WEA_URL}/mcp/sse" >> $GITHUB_OUTPUT
           echo "Weather MCP Server URL: ${WEA_URL}/mcp/sse"
 
-      # 5. Deploy A2A Agents (when code changed or MCP servers updated)
+      # 6. Deploy A2A Agents (when code changed or MCP servers updated)
       - name: Set up Python
         if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
         uses: actions/setup-python@v5
@@ -474,7 +565,7 @@ jobs:
           echo "  Weather: $WEA_MCP_SERVER_URL"
           .venv/bin/python deployment/deploy_agents.py
 
-      # 6. Get Agent Engine ID
+      # 7. Get Agent Engine ID
       - name: Get Agent Engine ID
         id: agent_id
         run: |
@@ -497,46 +588,18 @@ jobs:
           fi
           echo "AGENT_ENGINE_ID=$AGENT_ID" >> $GITHUB_OUTPUT
 
-      # 7. Deploy Frontend (when code changed or agents updated)
-      - name: Build and Deploy Frontend
+      # 8. Build Frontend Image (Terraform will deploy it)
+      - name: Build Frontend Image
         if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
         run: |
-          echo "Building Frontend..."
+          echo "Building Frontend image..."
           gcloud builds submit ./src/frontend \
-            --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb \
+            --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
-          echo "Deploying Frontend to Cloud Run with Agent Engine ID: ${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}"
-          gcloud run deploy a2a-frontend-adk-mb \
-            --image gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb \
-            --region ${{ env.REGION }} \
-            --platform managed \
-            --allow-unauthenticated \
-            --set-env-vars "PROJECT_ID=${{ env.PROJECT_ID }},PROJECT_NUMBER=${{ env.PROJECT_NUMBER }},AGENT_ENGINE_ID=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }},GOOGLE_CLOUD_LOCATION=${{ env.REGION }}" \
-            --project ${{ env.PROJECT_ID }}
-
-      # 6. Deploy Infrastructure via Terraform (only if config changed)
-      - name: Setup Terraform
-        if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Ensure Terraform state bucket exists
-        if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
-        run: |
-          gcloud storage buckets describe gs://${{ env.PROJECT_ID }}-terraform-state 2>/dev/null || \
-          gcloud storage buckets create gs://${{ env.PROJECT_ID }}-terraform-state \
-            --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
-
-      - name: Terraform Init
-        if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
-        run: |
-          terraform init \
-            -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
-            -backend-config="prefix=a2a-multiagent-adk-memory-cicd/prod"
-        working-directory: deployment/terraform
-
-      - name: Import existing Cloud Run services into Terraform state
-        if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
+      # 9. Deploy Frontend via Terraform (when frontend changed or after agent deployment)
+      - name: Import Frontend Cloud Run service
+        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
         working-directory: deployment/terraform
         run: |
           terraform import \
@@ -545,30 +608,12 @@ jobs:
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
-            google_cloud_run_v2_service.cocktail_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
-          terraform import \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="staging_project_id=${{ env.PROJECT_ID }}" \
-            -var="prod_project_id=${{ env.PROJECT_ID }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
-            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
-            google_cloud_run_v2_service.weather_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
-          terraform import \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="staging_project_id=${{ env.PROJECT_ID }}" \
-            -var="prod_project_id=${{ env.PROJECT_ID }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
-            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}" \
+            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             google_cloud_run_v2_service.a2a_frontend \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
 
-      - name: Terraform Apply
-        if: steps.changes.outputs.terraform == 'true' || steps.changes.outputs.agents == 'true'
+      - name: Terraform Apply Frontend
+        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
         run: |
           terraform apply -auto-approve \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
@@ -576,5 +621,20 @@ jobs:
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID || steps.check_agents.outputs.AGENT_ENGINE_ID || 'unset' }}"
+            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
+            -target=google_cloud_run_v2_service.a2a_frontend \
+            -target=google_cloud_run_v2_service_iam_member.frontend_invoker
+        working-directory: deployment/terraform
+
+      # 10. Apply full Terraform if Terraform config changed
+      - name: Terraform Apply All (if Terraform config changed)
+        if: steps.changes.outputs.terraform == 'true'
+        run: |
+          terraform apply -auto-approve \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}"
         working-directory: deployment/terraform
