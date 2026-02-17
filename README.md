@@ -261,7 +261,33 @@ The CI/CD pipeline automatically:
 
 ## Testing
 
-### Run Integration Tests
+This project includes comprehensive testing at multiple levels. See [TESTING_SUMMARY.md](TESTING_SUMMARY.md) for complete details.
+
+### Unit Tests
+
+Test individual components in isolation:
+
+```bash
+# Run all unit tests
+pytest tests/unit/ -v
+
+# Test agent cards
+pytest tests/unit/test_agent_cards.py -v
+
+# Test orchestrator logic
+pytest tests/unit/test_orchestrator_logic.py -v
+
+# Test frontend logic
+pytest tests/unit/test_frontend_logic.py -v
+
+# Test MCP servers
+pytest tests/unit/test_cocktail_server.py -v
+pytest tests/unit/test_weather_server.py -v
+```
+
+### Integration Tests
+
+Test end-to-end functionality:
 
 ```bash
 # Test MCP servers
@@ -277,12 +303,54 @@ python tests/integration/test_hosting_agent_remote.py
 python tests/integration/test_frontend_deployed.py
 ```
 
-### Run Load Tests
+### Evaluation Tests
+
+Evaluate agent performance against quality rubrics:
 
 ```bash
-cd tests/load_test
-python load_test.py
+# Run evaluation framework tests
+pytest tests/eval/test_agent_evaluation.py -v
+
+# Run evaluation on comprehensive test set
+python tests/eval/run_evaluation.py --evalset comprehensive --output results.json
 ```
+
+**Evaluation Rubrics**:
+- Relevance: Response addresses query (threshold: 0.8)
+- Helpfulness: Provides useful information
+- Format: Markdown formatting
+- Tool Routing: Correct agent selection
+
+### Load Tests
+
+Performance testing with realistic load:
+
+```bash
+# Set up environment
+export _AUTH_TOKEN=$(gcloud auth print-access-token -q)
+export PROJECT_ID="dw-genai-dev"
+export PROJECT_NUMBER="496235138247"
+export AGENT_ENGINE_ID="7540524410566868992"
+
+# Light load (5 users, 30 seconds)
+locust -f tests/load_test/load_test_comprehensive.py \
+  --headless -t 30s -u 5 -r 1 \
+  --csv=.results/light --html=.results/light.html
+
+# Medium load (20 users, 2 minutes)
+locust -f tests/load_test/load_test_comprehensive.py \
+  --headless -t 2m -u 20 -r 2 \
+  --csv=.results/medium --html=.results/medium.html
+```
+
+See [tests/load_test/README_COMPREHENSIVE.md](tests/load_test/README_COMPREHENSIVE.md) for detailed instructions.
+
+### Test Coverage Summary
+
+- **Unit Tests**: 150+ tests covering agent cards, orchestrator, frontend, and MCP servers
+- **Integration Tests**: 13 test files for end-to-end scenarios
+- **Evaluation Tests**: 14+ test cases with quality rubrics
+- **Load Tests**: Multi-scenario performance testing with weighted query distribution
 
 ## Monitoring and Debugging
 
