@@ -95,37 +95,21 @@ jobs:
             echo "DEPLOY_FRONTEND=false" >> $GITHUB_OUTPUT
           fi
 
-      # 3. Deploy MCP Servers (when code changed)
-      - name: Build and Deploy Cocktail MCP Server
+      # 3. Build MCP Server Images (Terraform will deploy them)
+      - name: Build Cocktail MCP Server Image
         if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true'
         run: |
-          echo "Building Cocktail MCP Server..."
+          echo "Building Cocktail MCP Server image..."
           gcloud builds submit ./src/mcp_servers/cocktail_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb \
+            --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
-          echo "Deploying Cocktail MCP Server to Cloud Run..."
-          gcloud run deploy cocktail-remote-mcp-server-adk-mb \
-            --image gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb \
-            --region ${{ env.REGION }} \
-            --platform managed \
-            --allow-unauthenticated \
-            --project ${{ env.PROJECT_ID }}
-
-      - name: Build and Deploy Weather MCP Server
+      - name: Build Weather MCP Server Image
         if: steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
         run: |
-          echo "Building Weather MCP Server..."
+          echo "Building Weather MCP Server image..."
           gcloud builds submit ./src/mcp_servers/weather_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb \
-            --project ${{ env.PROJECT_ID }}
-
-          echo "Deploying Weather MCP Server to Cloud Run..."
-          gcloud run deploy weather-remote-mcp-server-adk-mb \
-            --image gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb \
-            --region ${{ env.REGION }} \
-            --platform managed \
-            --allow-unauthenticated \
+            --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
       # 4. Get MCP Server URLs dynamically
@@ -413,37 +397,21 @@ jobs:
             echo "No existing agent engines found. Will deploy."
           fi
 
-      # 3. Deploy MCP Servers (when code changed)
-      - name: Build and Deploy Cocktail MCP Server
+      # 3. Build MCP Server Images (Terraform will deploy them)
+      - name: Build Cocktail MCP Server Image
         if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true'
         run: |
-          echo "Building Cocktail MCP Server..."
+          echo "Building Cocktail MCP Server image..."
           gcloud builds submit ./src/mcp_servers/cocktail_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb \
+            --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
-          echo "Deploying Cocktail MCP Server to Cloud Run..."
-          gcloud run deploy cocktail-remote-mcp-server-adk-mb \
-            --image gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb \
-            --region ${{ env.REGION }} \
-            --platform managed \
-            --allow-unauthenticated \
-            --project ${{ env.PROJECT_ID }}
-
-      - name: Build and Deploy Weather MCP Server
+      - name: Build Weather MCP Server Image
         if: steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
         run: |
-          echo "Building Weather MCP Server..."
+          echo "Building Weather MCP Server image..."
           gcloud builds submit ./src/mcp_servers/weather_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb \
-            --project ${{ env.PROJECT_ID }}
-
-          echo "Deploying Weather MCP Server to Cloud Run..."
-          gcloud run deploy weather-remote-mcp-server-adk-mb \
-            --image gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb \
-            --region ${{ env.REGION }} \
-            --platform managed \
-            --allow-unauthenticated \
+            --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
       # 4. Get MCP Server URLs dynamically

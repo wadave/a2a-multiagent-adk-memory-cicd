@@ -8,8 +8,8 @@ resource "google_cloud_run_v2_service" "cocktail_mcp_server" {
   template {
     timeout = "300s"
     containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello"
-      
+      image = "gcr.io/${var.cicd_runner_project_id}/cocktail-remote-mcp-server-adk-mb:latest"
+
       resources {
         limits = {
           cpu    = "1000m"
@@ -22,12 +22,6 @@ resource "google_cloud_run_v2_service" "cocktail_mcp_server" {
   traffic {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
     percent = 100
-  }
-
-  lifecycle {
-    ignore_changes = [
-      template[0].containers[0].image,
-    ]
   }
 }
 
@@ -41,8 +35,8 @@ resource "google_cloud_run_v2_service" "weather_mcp_server" {
   template {
     timeout = "300s"
     containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello"
-      
+      image = "gcr.io/${var.cicd_runner_project_id}/weather-remote-mcp-server-adk-mb:latest"
+
       resources {
         limits = {
           cpu    = "1000m"
@@ -55,12 +49,6 @@ resource "google_cloud_run_v2_service" "weather_mcp_server" {
   traffic {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
     percent = 100
-  }
-
-  lifecycle {
-    ignore_changes = [
-      template[0].containers[0].image,
-    ]
   }
 }
 
