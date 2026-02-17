@@ -239,25 +239,61 @@ gcloud run services add-iam-policy-binding weather-remote-mcp-server-adk-mb \
 
 ### CI/CD Deployment (Recommended)
 
-The project includes automated deployment via GitHub Actions:
+The project includes automated deployment via GitHub Actions using Workload Identity Federation (no service account keys needed!).
 
-1. **Setup Workload Identity Federation** (see `github-actions-wif-auth.md`)
+#### Quick Start
 
-2. **Configure Secrets**:
-   - Set up GitHub environments: `staging` and `production`
-   - Configure environment variables in `.github/workflows/deploy.yml`
+If CI/CD is already set up:
+
+1. **Push to staging**: `git push origin staging` → Deploys to staging environment
+2. **Push to main**: `git push origin main` → Deploys to production environment
+
+#### First-Time Setup
+
+If this is your first time setting up CI/CD, follow the complete guide:
+
+📘 **[CI/CD Setup Guide](CICD_SETUP_GUIDE.md)** - Complete step-by-step instructions
+
+The setup guide covers:
+- Google Cloud Workload Identity Federation configuration
+- Service account creation and IAM roles
+- GitHub environment and secrets configuration
+- Testing and troubleshooting
+- Security best practices
+
+**Quick overview**:
+
+1. **Setup Workload Identity Federation**:
+   - Create Workload Identity Pool and Provider in GCP
+   - Configure trust relationship between GitHub and GCP
+   - See [CICD_SETUP_GUIDE.md](CICD_SETUP_GUIDE.md) for detailed steps
+
+2. **Configure GitHub Environments**:
+   - Create `staging` and `production` environments
+   - Add environment variables (PROJECT_ID, PROJECT_NUMBER, etc.)
+   - Set up environment protection rules for production
 
 3. **Trigger Deployment**:
    - Push to `staging` branch for staging deployment
    - Push to `main` branch for production deployment
 
-The CI/CD pipeline automatically:
-- Detects which components have changed
+#### How It Works
+
+**Authentication**: See [github-actions-wif-auth.md](github-actions-wif-auth.md) for how Workload Identity Federation works.
+
+**Pipeline Behavior**:
+- Detects which components have changed (smart deployment)
 - Builds and deploys MCP servers to Cloud Run
 - Deploys agents to Vertex AI Agent Engine
 - Deploys frontend to Cloud Run
 - Applies Terraform infrastructure changes
 - Skips deployment of unchanged components
+
+**Deployment Triggers**:
+- `src/mcp_servers/**` → Deploys MCP servers
+- `src/a2a_agents/**` → Deploys agents
+- `src/frontend/**` → Deploys frontend
+- `deployment/terraform/**` → Applies Terraform
 
 ## Testing
 
@@ -412,9 +448,12 @@ For issues and questions:
 ## Documentation
 
 Additional documentation:
-- `FRONTEND_DEPLOYMENT_SUMMARY.md`: Frontend deployment details
-- `REORGANIZATION_SUMMARY.md`: Code organization and naming updates
-- `github-actions-wif-auth.md`: GitHub Actions Workload Identity setup
+- **[CICD_SETUP_GUIDE.md](CICD_SETUP_GUIDE.md)**: Complete CI/CD setup with GitHub Actions and GCP
+- **[TESTING_SUMMARY.md](TESTING_SUMMARY.md)**: Comprehensive testing guide (unit, eval, load tests)
+- **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)**: Migration guide for adk-mb naming transition
+- **[FRONTEND_DEPLOYMENT_SUMMARY.md](FRONTEND_DEPLOYMENT_SUMMARY.md)**: Frontend deployment details
+- **[REORGANIZATION_SUMMARY.md](REORGANIZATION_SUMMARY.md)**: Code organization and naming updates
+- **[github-actions-wif-auth.md](github-actions-wif-auth.md)**: How Workload Identity Federation authentication works
 
 ## Disclaimer
 
