@@ -141,8 +141,10 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=placeholder" \
             google_cloud_run_v2_service.cocktail_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
@@ -151,8 +153,10 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=placeholder" \
             google_cloud_run_v2_service.weather_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
@@ -164,8 +168,10 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=placeholder" \
             -target=google_cloud_run_v2_service.cocktail_mcp_server \
             -target=google_cloud_run_v2_service.weather_mcp_server \
@@ -276,8 +282,10 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             google_cloud_run_v2_service.a2a_frontend \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
@@ -289,8 +297,10 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             -target=google_cloud_run_v2_service.a2a_frontend \
             -target=google_cloud_run_v2_service_iam_member.frontend_invoker
@@ -304,8 +314,10 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}"
         working-directory: deployment/terraform
 
@@ -471,8 +483,10 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=placeholder" \
             google_cloud_run_v2_service.cocktail_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
@@ -481,8 +495,10 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=placeholder" \
             google_cloud_run_v2_service.weather_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
@@ -494,8 +510,10 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=placeholder" \
             -target=google_cloud_run_v2_service.cocktail_mcp_server \
             -target=google_cloud_run_v2_service.weather_mcp_server \
@@ -606,8 +624,10 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             google_cloud_run_v2_service.a2a_frontend \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
@@ -619,8 +639,10 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             -target=google_cloud_run_v2_service.a2a_frontend \
             -target=google_cloud_run_v2_service_iam_member.frontend_invoker
@@ -634,7 +656,9 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
             -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}"
         working-directory: deployment/terraform

@@ -76,7 +76,7 @@ resource "google_cloud_run_v2_service" "a2a_frontend" {
 
       env {
         name  = "PROJECT_NUMBER"
-        value = data.google_project.project.number
+        value = var.project_number != "" ? var.project_number : data.google_project.project.number
       }
 
       env {
@@ -87,7 +87,7 @@ resource "google_cloud_run_v2_service" "a2a_frontend" {
       resources {
         limits = {
           cpu    = "1000m"
-          memory = "2048Mi"
+          memory = "1024Mi"
         }
       }
     }
