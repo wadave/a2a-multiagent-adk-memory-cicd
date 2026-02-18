@@ -16,6 +16,10 @@ jobs:
     if: github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     environment: staging
+    # Prevent concurrent deployments to staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -405,6 +409,10 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
+    # Prevent concurrent deployments to production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     permissions:
       contents: 'read'
       id-token: 'write'
