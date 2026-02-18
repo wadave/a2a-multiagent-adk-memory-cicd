@@ -62,40 +62,91 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # 2. Determine deployment flags based on changes and dependencies
+      # 2. Check if resources exist (for first-time deployment detection)
+      - name: Check existing resources
+        id: check_resources
+        run: |
+          # Check if MCP servers exist
+          COCKTAIL_EXISTS=$(gcloud run services describe cocktail-remote-mcp-server-adk-mb \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(name)' 2>/dev/null || echo "")
+          WEATHER_EXISTS=$(gcloud run services describe weather-remote-mcp-server-adk-mb \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(name)' 2>/dev/null || echo "")
+
+          # Check if agents exist
+          AGENT_EXISTS=$(curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+            "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=1" \
+            | jq -r '.reasoningEngines[]? | select(.displayName | contains("adk-mb")) | .name' | head -1 || echo "")
+
+          # Check if frontend exists
+          FRONTEND_EXISTS=$(gcloud run services describe a2a-frontend-adk-mb \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(name)' 2>/dev/null || echo "")
+
+          # Set flags
+          [ -z "$COCKTAIL_EXISTS" ] && echo "COCKTAIL_MCP_EXISTS=false" >> $GITHUB_OUTPUT || echo "COCKTAIL_MCP_EXISTS=true" >> $GITHUB_OUTPUT
+          [ -z "$WEATHER_EXISTS" ] && echo "WEATHER_MCP_EXISTS=false" >> $GITHUB_OUTPUT || echo "WEATHER_MCP_EXISTS=true" >> $GITHUB_OUTPUT
+          [ -z "$AGENT_EXISTS" ] && echo "AGENTS_EXIST=false" >> $GITHUB_OUTPUT || echo "AGENTS_EXIST=true" >> $GITHUB_OUTPUT
+          [ -z "$FRONTEND_EXISTS" ] && echo "FRONTEND_EXISTS=false" >> $GITHUB_OUTPUT || echo "FRONTEND_EXISTS=true" >> $GITHUB_OUTPUT
+
+          echo "Resource check:"
+          echo "  Cocktail MCP: $([ -z "$COCKTAIL_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
+          echo "  Weather MCP: $([ -z "$WEATHER_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
+          echo "  Agents: $([ -z "$AGENT_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
+          echo "  Frontend: $([ -z "$FRONTEND_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
+
+      # 3. Determine deployment flags based on changes and dependencies
       - name: Set deployment flags
         id: deploy_flags
         run: |
-          # Deploy MCP servers if code changed
-          echo "DEPLOY_COCKTAIL_MCP=${{ steps.changes.outputs.cocktail_mcp }}" >> $GITHUB_OUTPUT
-          echo "DEPLOY_WEATHER_MCP=${{ steps.changes.outputs.weather_mcp }}" >> $GITHUB_OUTPUT
+          # Deploy MCP servers if code changed OR if they don't exist (first-time deployment)
+          if [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
+             [ "${{ steps.check_resources.outputs.COCKTAIL_MCP_EXISTS }}" == "false" ]; then
+            echo "DEPLOY_COCKTAIL_MCP=true" >> $GITHUB_OUTPUT
+            echo "Will deploy Cocktail MCP (changed or doesn't exist)"
+          else
+            echo "DEPLOY_COCKTAIL_MCP=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
+             [ "${{ steps.check_resources.outputs.WEATHER_MCP_EXISTS }}" == "false" ]; then
+            echo "DEPLOY_WEATHER_MCP=true" >> $GITHUB_OUTPUT
+            echo "Will deploy Weather MCP (changed or doesn't exist)"
+          else
+            echo "DEPLOY_WEATHER_MCP=false" >> $GITHUB_OUTPUT
+          fi
 
           # Deploy agents if:
           # - Agent code changed, OR
-          # - Any MCP server changed (agents depend on MCP servers)
+          # - Any MCP server changed, OR
+          # - Agents don't exist (first-time deployment)
           if [ "${{ steps.changes.outputs.agents }}" == "true" ] || \
              [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ]; then
+             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
+             [ "${{ steps.check_resources.outputs.AGENTS_EXIST }}" == "false" ]; then
             echo "DEPLOY_AGENTS=true" >> $GITHUB_OUTPUT
-            echo "Agents will be deployed due to code changes or MCP server updates"
+            echo "Will deploy Agents (changed, dependencies changed, or don't exist)"
           else
             echo "DEPLOY_AGENTS=false" >> $GITHUB_OUTPUT
           fi
 
           # Deploy frontend if:
           # - Frontend code changed, OR
-          # - Agents changed (frontend depends on agent engine ID)
+          # - Agents changed, OR
+          # - Frontend doesn't exist (first-time deployment)
           if [ "${{ steps.changes.outputs.frontend }}" == "true" ] || \
              [ "${{ steps.changes.outputs.agents }}" == "true" ] || \
              [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ]; then
+             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
+             [ "${{ steps.check_resources.outputs.FRONTEND_EXISTS }}" == "false" ]; then
             echo "DEPLOY_FRONTEND=true" >> $GITHUB_OUTPUT
-            echo "Frontend will be deployed due to code changes or upstream dependency updates"
+            echo "Will deploy Frontend (changed, dependencies changed, or doesn't exist)"
           else
             echo "DEPLOY_FRONTEND=false" >> $GITHUB_OUTPUT
           fi
 
-      # 3. Build MCP Server Images (Terraform will deploy them)
+      # 4. Build MCP Server Images (Terraform will deploy them)
       - name: Build Cocktail MCP Server Image
         if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true'
         run: |
@@ -181,10 +232,15 @@ jobs:
             -target=google_cloud_run_v2_service_iam_member.weather_mcp_compute_invoker
         working-directory: deployment/terraform
 
-      # 5. Get MCP Server URLs (now that services exist)
+      # 5. Get MCP Server URLs (only if deploying agents)
       - name: Get MCP Server URLs
+        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
         id: mcp_urls
         run: |
+          # Wait a few seconds for Cloud Run services to be fully ready
+          echo "Waiting for MCP services to be ready..."
+          sleep 10
+
           # Get Cocktail MCP Server URL
           CT_URL=$(gcloud run services describe cocktail-remote-mcp-server-adk-mb \
             --region=${{ env.REGION }} \
@@ -193,6 +249,7 @@ jobs:
 
           if [ -z "$CT_URL" ]; then
             echo "ERROR: Could not get Cocktail MCP Server URL"
+            echo "This might indicate the service failed to deploy. Check Cloud Run console."
             exit 1
           fi
           echo "CT_MCP_SERVER_URL=${CT_URL}/mcp/sse" >> $GITHUB_OUTPUT
@@ -206,6 +263,7 @@ jobs:
 
           if [ -z "$WEA_URL" ]; then
             echo "ERROR: Could not get Weather MCP Server URL"
+            echo "This might indicate the service failed to deploy. Check Cloud Run console."
             exit 1
           fi
           echo "WEA_MCP_SERVER_URL=${WEA_URL}/mcp/sse" >> $GITHUB_OUTPUT
@@ -241,8 +299,9 @@ jobs:
           echo "  Weather: $WEA_MCP_SERVER_URL"
           .venv/bin/python deployment/deploy_agents.py
 
-      # 7. Get Agent Engine ID
+      # 7. Get Agent Engine ID (only if deploying frontend)
       - name: Get Agent Engine ID
+        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
         id: agent_id
         run: |
           # Use newly deployed agent ID if available, otherwise find existing agent
@@ -250,6 +309,10 @@ jobs:
             AGENT_ID="${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}"
             echo "Using newly deployed Agent Engine ID: $AGENT_ID"
           else
+            # Wait for agents to be deployed
+            echo "Waiting for agents to be ready..."
+            sleep 10
+
             AGENT_ID=$(curl -s \
               -H "Authorization: Bearer $(gcloud auth print-access-token)" \
               "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
@@ -258,6 +321,7 @@ jobs:
 
             if [ -z "$AGENT_ID" ]; then
               echo "ERROR: Could not find Hosting Agent"
+              echo "This might indicate the agent deployment failed. Check Agent Engine console."
               exit 1
             fi
             echo "Using existing Agent Engine ID: $AGENT_ID"
@@ -387,35 +451,86 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # 2. Determine deployment flags based on changes and dependencies
+      # 2. Check if resources exist (for first-time deployment detection)
+      - name: Check existing resources
+        id: check_resources
+        run: |
+          # Check if MCP servers exist
+          COCKTAIL_EXISTS=$(gcloud run services describe cocktail-remote-mcp-server-adk-mb \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(name)' 2>/dev/null || echo "")
+          WEATHER_EXISTS=$(gcloud run services describe weather-remote-mcp-server-adk-mb \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(name)' 2>/dev/null || echo "")
+
+          # Check if agents exist
+          AGENT_EXISTS=$(curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+            "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=1" \
+            | jq -r '.reasoningEngines[]? | select(.displayName | contains("adk-mb")) | .name' | head -1 || echo "")
+
+          # Check if frontend exists
+          FRONTEND_EXISTS=$(gcloud run services describe a2a-frontend-adk-mb \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(name)' 2>/dev/null || echo "")
+
+          # Set flags
+          [ -z "$COCKTAIL_EXISTS" ] && echo "COCKTAIL_MCP_EXISTS=false" >> $GITHUB_OUTPUT || echo "COCKTAIL_MCP_EXISTS=true" >> $GITHUB_OUTPUT
+          [ -z "$WEATHER_EXISTS" ] && echo "WEATHER_MCP_EXISTS=false" >> $GITHUB_OUTPUT || echo "WEATHER_MCP_EXISTS=true" >> $GITHUB_OUTPUT
+          [ -z "$AGENT_EXISTS" ] && echo "AGENTS_EXIST=false" >> $GITHUB_OUTPUT || echo "AGENTS_EXIST=true" >> $GITHUB_OUTPUT
+          [ -z "$FRONTEND_EXISTS" ] && echo "FRONTEND_EXISTS=false" >> $GITHUB_OUTPUT || echo "FRONTEND_EXISTS=true" >> $GITHUB_OUTPUT
+
+          echo "Resource check:"
+          echo "  Cocktail MCP: $([ -z "$COCKTAIL_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
+          echo "  Weather MCP: $([ -z "$WEATHER_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
+          echo "  Agents: $([ -z "$AGENT_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
+          echo "  Frontend: $([ -z "$FRONTEND_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
+
+      # 3. Determine deployment flags based on changes and dependencies
       - name: Set deployment flags
         id: deploy_flags
         run: |
-          # Deploy MCP servers if code changed
-          echo "DEPLOY_COCKTAIL_MCP=${{ steps.changes.outputs.cocktail_mcp }}" >> $GITHUB_OUTPUT
-          echo "DEPLOY_WEATHER_MCP=${{ steps.changes.outputs.weather_mcp }}" >> $GITHUB_OUTPUT
+          # Deploy MCP servers if code changed OR if they don't exist (first-time deployment)
+          if [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
+             [ "${{ steps.check_resources.outputs.COCKTAIL_MCP_EXISTS }}" == "false" ]; then
+            echo "DEPLOY_COCKTAIL_MCP=true" >> $GITHUB_OUTPUT
+            echo "Will deploy Cocktail MCP (changed or doesn't exist)"
+          else
+            echo "DEPLOY_COCKTAIL_MCP=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
+             [ "${{ steps.check_resources.outputs.WEATHER_MCP_EXISTS }}" == "false" ]; then
+            echo "DEPLOY_WEATHER_MCP=true" >> $GITHUB_OUTPUT
+            echo "Will deploy Weather MCP (changed or doesn't exist)"
+          else
+            echo "DEPLOY_WEATHER_MCP=false" >> $GITHUB_OUTPUT
+          fi
 
           # Deploy agents if:
           # - Agent code changed, OR
-          # - Any MCP server changed (agents depend on MCP servers)
+          # - Any MCP server changed, OR
+          # - Agents don't exist (first-time deployment)
           if [ "${{ steps.changes.outputs.agents }}" == "true" ] || \
              [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ]; then
+             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
+             [ "${{ steps.check_resources.outputs.AGENTS_EXIST }}" == "false" ]; then
             echo "DEPLOY_AGENTS=true" >> $GITHUB_OUTPUT
-            echo "Agents will be deployed due to code changes or MCP server updates"
+            echo "Will deploy Agents (changed, dependencies changed, or don't exist)"
           else
             echo "DEPLOY_AGENTS=false" >> $GITHUB_OUTPUT
           fi
 
           # Deploy frontend if:
           # - Frontend code changed, OR
-          # - Agents changed (frontend depends on agent engine ID)
+          # - Agents changed, OR
+          # - Frontend doesn't exist (first-time deployment)
           if [ "${{ steps.changes.outputs.frontend }}" == "true" ] || \
              [ "${{ steps.changes.outputs.agents }}" == "true" ] || \
              [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ]; then
+             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
+             [ "${{ steps.check_resources.outputs.FRONTEND_EXISTS }}" == "false" ]; then
             echo "DEPLOY_FRONTEND=true" >> $GITHUB_OUTPUT
-            echo "Frontend will be deployed due to code changes or upstream dependency updates"
+            echo "Will deploy Frontend (changed, dependencies changed, or doesn't exist)"
           else
             echo "DEPLOY_FRONTEND=false" >> $GITHUB_OUTPUT
           fi
@@ -523,10 +638,15 @@ jobs:
             -target=google_cloud_run_v2_service_iam_member.weather_mcp_compute_invoker
         working-directory: deployment/terraform
 
-      # 5. Get MCP Server URLs (now that services exist)
+      # 5. Get MCP Server URLs (only if deploying agents)
       - name: Get MCP Server URLs
+        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
         id: mcp_urls
         run: |
+          # Wait a few seconds for Cloud Run services to be fully ready
+          echo "Waiting for MCP services to be ready..."
+          sleep 10
+
           # Get Cocktail MCP Server URL
           CT_URL=$(gcloud run services describe cocktail-remote-mcp-server-adk-mb \
             --region=${{ env.REGION }} \
@@ -535,6 +655,7 @@ jobs:
 
           if [ -z "$CT_URL" ]; then
             echo "ERROR: Could not get Cocktail MCP Server URL"
+            echo "This might indicate the service failed to deploy. Check Cloud Run console."
             exit 1
           fi
           echo "CT_MCP_SERVER_URL=${CT_URL}/mcp/sse" >> $GITHUB_OUTPUT
@@ -548,6 +669,7 @@ jobs:
 
           if [ -z "$WEA_URL" ]; then
             echo "ERROR: Could not get Weather MCP Server URL"
+            echo "This might indicate the service failed to deploy. Check Cloud Run console."
             exit 1
           fi
           echo "WEA_MCP_SERVER_URL=${WEA_URL}/mcp/sse" >> $GITHUB_OUTPUT
@@ -583,8 +705,9 @@ jobs:
           echo "  Weather: $WEA_MCP_SERVER_URL"
           .venv/bin/python deployment/deploy_agents.py
 
-      # 7. Get Agent Engine ID
+      # 7. Get Agent Engine ID (only if deploying frontend)
       - name: Get Agent Engine ID
+        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
         id: agent_id
         run: |
           # Use newly deployed agent ID if available, otherwise find existing agent
@@ -592,6 +715,10 @@ jobs:
             AGENT_ID="${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}"
             echo "Using newly deployed Agent Engine ID: $AGENT_ID"
           else
+            # Wait for agents to be deployed
+            echo "Waiting for agents to be ready..."
+            sleep 10
+
             AGENT_ID=$(curl -s \
               -H "Authorization: Bearer $(gcloud auth print-access-token)" \
               "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
@@ -600,6 +727,7 @@ jobs:
 
             if [ -z "$AGENT_ID" ]; then
               echo "ERROR: Could not find Hosting Agent"
+              echo "This might indicate the agent deployment failed. Check Agent Engine console."
               exit 1
             fi
             echo "Using existing Agent Engine ID: $AGENT_ID"
