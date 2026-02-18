@@ -64,7 +64,7 @@ async def test_remote_cocktail_agent():
     project_id = os.environ.get("PROJECT_ID", "dw-genai-dev")
     location = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
     project_number = os.environ.get("PROJECT_NUMBER", "496235138247")
-    cocktail_agent_id = "271714611990888448"
+    cocktail_agent_id = "7965234966051160064"
 
     # Initialize Vertex AI
     vertexai.init(project=project_id, location=location)
@@ -111,7 +111,7 @@ async def test_remote_cocktail_agent():
     a2a_client = factory.create(agent_card)
 
     # Test query
-    query = "What are the ingredients for a Margarita?"
+    query = "list a random cocktail"
     print(f"Sending query: {query}")
 
     message = Message(
@@ -136,7 +136,6 @@ async def test_remote_cocktail_agent():
 
         task_data = {
             "id": task_id,
-            "historyLength": 1,
         }
         response = await a2a_client.get_task(TaskQueryParams(**task_data))
 
