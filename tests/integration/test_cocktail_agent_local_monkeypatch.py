@@ -35,30 +35,34 @@ logging.basicConfig(level=logging.INFO)
 
 # --- Monkeypatch for Local Auth ---
 
+
 def mock_get_gcp_auth_headers(audience: str) -> Dict[str, str]:
     """Mock that uses gcloud to get a token working for local user."""
     try:
         # Use audiences flag for OIDC token
         token = subprocess.check_output(
-            ["gcloud", "auth", "print-identity-token", f"--audiences={audience}"], text=True
+            ["gcloud", "auth", "print-identity-token", f"--audiences={audience}"],
+            text=True,
         ).strip()
         return {"Authorization": f"Bearer {token}"}
     except Exception as e:
         # Fallback to no-audience if that fails (some accounts don't support it)
         try:
-             token = subprocess.check_output(
+            token = subprocess.check_output(
                 ["gcloud", "auth", "print-identity-token"], text=True
             ).strip()
-             return {"Authorization": f"Bearer {token}"}
+            return {"Authorization": f"Bearer {token}"}
         except:
             logging.error(f"Failed to get gcloud token: {e}")
             return {}
+
 
 # Apply the patch
 executor_module.get_gcp_auth_headers = mock_get_gcp_auth_headers
 logging.info("Monkeypatched get_gcp_auth_headers for local testing")
 
 # --- Helpers from Notebook ---
+
 
 def receive_wrapper(data: dict) -> Callable[[], Awaitable[dict]]:
     """Creates a mock ASGI receive callable for testing."""
@@ -102,16 +106,21 @@ def build_get_request(path_params: dict[str, str]) -> Request:
 
     return Request(scope, receive)
 
+
+from tests import test_config
+
 # --- Test Logic ---
+
 
 async def test_agent_locally():
     print("\n--- Initializing A2aAgent ---")
-    
+
     # Ensure environment variables are set for AdkBaseMcpAgentExecutor
-    os.environ["PROJECT_ID"] = os.environ.get("PROJECT_ID", "dw-genai-dev")
-    os.environ["LOCATION"] = "us-central1"
-    os.environ["CT_MCP_SERVER_URL"] = "https://cocktail-remote-mcp-server-496235138247.us-central1.run.app/mcp/sse"
-    
+    os.environ["PROJECT_ID"] = test_config.PROJECT_ID
+    os.environ["LOCATION"] = test_config.LOCATION
+    os.environ["GOOGLE_CLOUD_REGION"] = test_config.LOCATION
+    os.environ["CT_MCP_SERVER_URL"] = test_config.CT_MCP_SERVER_URL
+
     a2a_agent = A2aAgent(
         agent_card=cocktail_agent_card, agent_executor_builder=CocktailAgentExecutor
     )
@@ -137,20 +146,20 @@ async def test_agent_locally():
     }
     request = build_post_request(message_data)
     response = await a2a_agent.on_message_send(request=request, context=None)
-    
+
     task_id = response["task"]["id"]
     print(f"Task ID: {task_id}")
 
     print("\n--- Polling for Result ---")
     task_data = {"id": task_id}
-    
+
     # Simple poll loop
-    for i in range(15): # Try 15 times
+    for i in range(15):  # Try 15 times
         request = build_get_request(task_data)
         response = await a2a_agent.on_get_task(request=request, context=None)
         state = response.get("status", {}).get("state")
         print(f"Poll {i+1} - Task State: {state}")
-        
+
         if state == "TASK_STATE_COMPLETED":
             for artifact in response.get("artifacts", []):
                 if artifact["parts"] and "text" in artifact["parts"][0]:
@@ -159,8 +168,9 @@ async def test_agent_locally():
         elif state == "TASK_STATE_FAILED":
             print(f"Task Failed: {response.get('status', {}).get('message')}")
             break
-        
+
         await asyncio.sleep(2)
+
 
 if __name__ == "__main__":
     asyncio.run(test_agent_locally())

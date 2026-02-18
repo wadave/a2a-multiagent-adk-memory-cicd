@@ -167,9 +167,14 @@ class HostingAgentUser(HttpUser):
                                     response_data = event_data
 
                                     # Check for errors
-                                    if "code" in event_data and event_data["code"] >= 400:
+                                    if (
+                                        "code" in event_data
+                                        and event_data["code"] >= 400
+                                    ):
                                         has_error = True
-                                        error_msg = event_data.get("message", "Unknown error")
+                                        error_msg = event_data.get(
+                                            "message", "Unknown error"
+                                        )
                                         logger.error(
                                             f"Error in {category} query: {error_msg}"
                                         )

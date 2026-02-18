@@ -84,17 +84,21 @@ class TestGoogleAuthClass:
 class TestEnvironmentConfiguration:
     """Tests for environment variable configuration."""
 
-    @patch.dict(os.environ, {
-        "PROJECT_ID": "test-project",
-        "PROJECT_NUMBER": "123456",
-        "AGENT_ENGINE_ID": "789",
-        "GOOGLE_CLOUD_LOCATION": "us-west1"
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "PROJECT_ID": "test-project",
+            "PROJECT_NUMBER": "123456",
+            "AGENT_ENGINE_ID": "789",
+            "GOOGLE_CLOUD_LOCATION": "us-west1",
+        },
+    )
     def test_environment_variables_loaded(self):
         """Verify environment variables are loaded correctly."""
         # Force reload of main module to pick up environment
         import importlib
         import frontend.main
+
         importlib.reload(frontend.main)
 
         assert frontend.main.PROJECT_ID == "test-project"
@@ -107,6 +111,7 @@ class TestEnvironmentConfiguration:
         """Verify default location is used when not specified."""
         import importlib
         import frontend.main
+
         importlib.reload(frontend.main)
 
         # Default should be us-central1
@@ -170,7 +175,9 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     @patch("frontend.main.get_agent_card")
     @patch("frontend.main.httpx.AsyncClient")
-    async def test_error_handling_in_get_response(self, mock_client_class, mock_get_card):
+    async def test_error_handling_in_get_response(
+        self, mock_client_class, mock_get_card
+    ):
         """Verify error handling in get_response_from_agent."""
         # Mock agent card retrieval to raise an exception
         mock_get_card.side_effect = Exception("Test error")
@@ -191,15 +198,19 @@ class TestErrorHandling:
 class TestResourceNameConstruction:
     """Tests for resource name construction."""
 
-    @patch.dict(os.environ, {
-        "PROJECT_NUMBER": "123456",
-        "GOOGLE_CLOUD_LOCATION": "us-central1",
-        "AGENT_ENGINE_ID": "789"
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "PROJECT_NUMBER": "123456",
+            "GOOGLE_CLOUD_LOCATION": "us-central1",
+            "AGENT_ENGINE_ID": "789",
+        },
+    )
     def test_resource_name_format(self):
         """Verify resource name is properly formatted."""
         import importlib
         import frontend.main
+
         importlib.reload(frontend.main)
 
         expected = "projects/123456/locations/us-central1/reasoningEngines/789"

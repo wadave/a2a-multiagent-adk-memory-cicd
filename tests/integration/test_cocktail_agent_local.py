@@ -22,6 +22,8 @@ from typing import Any, Callable, Awaitable
 from starlette.requests import Request
 from dotenv import load_dotenv
 
+from tests import test_config
+
 # Add src to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
@@ -29,13 +31,17 @@ from a2a_agents.cocktail_agent.cocktail_agent_card import cocktail_agent_card
 from a2a_agents.cocktail_agent.agent_executor import CocktailAgentExecutor
 from vertexai.preview.reasoning_engines import A2aAgent
 
+
 # Helpers from notebook
 def receive_wrapper(data: dict) -> Callable[[], Awaitable[dict]]:
     """Creates a mock ASGI receive callable for testing."""
+
     async def receive():
         byte_data = json.dumps(data).encode("utf-8")
         return {"type": "http.request", "body": byte_data, "more_body": False}
+
     return receive
+
 
 def build_post_request(
     data: dict[str, Any] | None = None, path_params: dict[str, str] | None = None
@@ -51,6 +57,7 @@ def build_post_request(
         scope["path_params"] = path_params
     receiver = receive_wrapper(data)
     return Request(scope, receiver)
+
 
 def build_get_request(path_params: dict[str, str] | None = None) -> Request:
     """Builds a mock Starlette Request object for a GET request."""
@@ -68,41 +75,40 @@ def build_get_request(path_params: dict[str, str] | None = None) -> Request:
 
     return Request(scope, receive)
 
+
 async def test_cocktail_agent_local():
     print("--- Testing Cocktail Agent Locally ---")
-    load_dotenv()
-    
-    # Ensure environment variables are set
-    if not os.environ.get("PROJECT_ID"):
-        print("Error: PROJECT_ID not set")
-        return
-    
-    # Force LOCATION to us-central1 as required by the error message
-    os.environ["LOCATION"] = "us-central1"
-    os.environ["GOOGLE_CLOUD_REGION"] = "us-central1"
-        
-    if not os.environ.get("CT_MCP_SERVER_URL"):
-        # Default to the deployed URL if not set locally
-        os.environ["CT_MCP_SERVER_URL"] = "https://cocktail-remote-mcp-server-496235138247.us-central1.run.app/mcp/sse"
-        print(f"Set CT_MCP_SERVER_URL to {os.environ['CT_MCP_SERVER_URL']}")
+
+    project_id = test_config.PROJECT_ID
+    location = test_config.LOCATION
+    ct_mcp_server_url = test_config.CT_MCP_SERVER_URL
+
+    # Ensure environment variables are set explicitly for the AdkBaseMcpAgentExecutor
+    os.environ["PROJECT_ID"] = project_id
+    os.environ["LOCATION"] = location
+    os.environ["GOOGLE_CLOUD_REGION"] = location
+    os.environ["CT_MCP_SERVER_URL"] = ct_mcp_server_url
+
+    print(f"Set CT_MCP_SERVER_URL to {os.environ['CT_MCP_SERVER_URL']}")
 
     # Initialize Vertex AI
     import vertexai
-    vertexai.init(project=os.environ.get("PROJECT_ID"), location="us-central1")
+
+    vertexai.init(project=project_id, location=location)
 
     # 1. Initialize Agent
     print("Initializing A2aAgent...")
     # agent_engine_id is optional for local testing in AdkBaseMcpAgentExecutor if not strictly required by logic
-    # But get_agent_engine() is called in __init__ if None. 
+    # But get_agent_engine() is called in __init__ if None.
     # For local test, we might want to avoid creating a real Agent Engine resource if possible?
-    # The reference notebook passes `agent_engine_id=""` or an existing one. 
+    # The reference notebook passes `agent_engine_id=""` or an existing one.
     # If we pass None, it creates one.
-    
+
     # We will let it create one (or use one if we had it), but for a quick local test
     # creating a whole agent engine might be slow/overkill?
     # Actually AdkBaseMcpAgentExecutor calls get_agent_engine() in __init__ if None.
     # Let's try to mock it or just let it run.
-    
+
     a2a_agent = A2aAgent(
         agent_card=cocktail_agent_card,
         agent_executor_builder=CocktailAgentExecutor,
@@ -131,7 +137,7 @@ async def test_cocktail_agent_local():
     }
     request = build_post_request(message_data)
     response = await a2a_agent.on_message_send(request=request, context=None)
-    
+
     task_id = response["task"]["id"]
     print(f"Task started: {task_id}")
 
@@ -142,10 +148,10 @@ async def test_cocktail_agent_local():
         task_data = {"id": task_id}
         request = build_get_request(task_data)
         response2 = await a2a_agent.on_get_task(request=request, context=None)
-        
+
         status = response2["status"]["state"]
         print(f"Poll {i+1}: {status}")
-        
+
         if status == "TASK_STATE_COMPLETED":
             for artifact in response2.get("artifacts", []):
                 if artifact.get("parts"):
@@ -154,8 +160,9 @@ async def test_cocktail_agent_local():
         elif status == "TASK_STATE_FAILED":
             print(f"Task failed: {response2['status'].get('message')}")
             break
-            
+
         await asyncio.sleep(2)
+
 
 if __name__ == "__main__":
     asyncio.run(test_cocktail_agent_local())

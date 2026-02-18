@@ -6,6 +6,7 @@ import time
 
 FRONTEND_URL = "https://a2a-frontend-496235138247.us-central1.run.app"
 
+
 def test_frontend_health():
     """Test if the frontend is accessible."""
     print(f"Testing frontend at {FRONTEND_URL}...")
@@ -17,7 +18,10 @@ def test_frontend_health():
         if response.status_code == 200:
             print("✓ Frontend is accessible!")
             # Check if it's the Gradio interface
-            if "gradio" in response.text.lower() or "a2a host agent" in response.text.lower():
+            if (
+                "gradio" in response.text.lower()
+                or "a2a host agent" in response.text.lower()
+            ):
                 print("✓ Gradio interface detected!")
                 return True
             else:
@@ -30,6 +34,7 @@ def test_frontend_health():
     except Exception as e:
         print(f"✗ Error accessing frontend: {e}")
         return False
+
 
 def test_gradio_api():
     """Test Gradio API endpoint."""
@@ -51,6 +56,7 @@ def test_gradio_api():
     except Exception as e:
         print(f"⚠ Could not access Gradio API: {e}")
         return False
+
 
 if __name__ == "__main__":
     print("=" * 60)

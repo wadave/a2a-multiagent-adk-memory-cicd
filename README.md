@@ -4,7 +4,6 @@
 >
 > **⚠️ Important**: A2A is a work in progress (WIP). In the near future there might be changes that are different from what is demonstrated here.
 >
-> **⚠️ Important**: Please run it in **Cloud Shell** to ensure you have the proper permissions.
 
 This document describes a multi-agent setup using Agent2Agent (A2A), ADK (Agent Development Kit), Agent Engine, MCP (Model Context Protocol) servers, and **Vertex AI Memory Bank** for conversation persistence. The application demonstrates how the A2A protocol works between agents with memory capabilities.
 
@@ -369,6 +368,7 @@ gcloud run services add-iam-policy-binding weather-remote-mcp-server-adk-mb \
 ### CI/CD Deployment (Recommended)
 
 The project includes automated deployment via GitHub Actions using Workload Identity Federation (no service account keys needed!).
+![CI/CD](asset/github-gcp-auth-flow.jpg)
 
 #### Quick Start
 

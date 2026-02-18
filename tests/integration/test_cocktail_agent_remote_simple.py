@@ -26,14 +26,17 @@ logging.basicConfig(level=logging.INFO)
 load_dotenv()
 
 
+from tests import test_config
+
+
 async def test_remote_cocktail_agent():
     print("\n=== Testing Remote Cocktail Agent ===\n")
 
     # Configuration
-    project_id = os.environ.get("PROJECT_ID", "dw-genai-dev")
-    location = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
-    project_number = os.environ.get("PROJECT_NUMBER", "496235138247")
-    cocktail_agent_id = "271714611990888448"
+    project_id = test_config.PROJECT_ID
+    location = test_config.LOCATION
+    project_number = test_config.PROJECT_NUMBER
+    cocktail_agent_id = test_config.COCKTAIL_AGENT_ID
 
     # Initialize Vertex AI
     vertexai.init(project=project_id, location=location)
@@ -42,7 +45,8 @@ async def test_remote_cocktail_agent():
         project=project_id,
         location=location,
         http_options=types.HttpOptions(
-            api_version="v1beta1", base_url=f"https://{location}-aiplatform.googleapis.com/"
+            api_version="v1beta1",
+            base_url=f"https://{location}-aiplatform.googleapis.com/",
         ),
     )
 
@@ -50,7 +54,12 @@ async def test_remote_cocktail_agent():
     print(f"Getting remote agent (ID: {cocktail_agent_id})...")
     agent_resource_name = f"projects/{project_number}/locations/{location}/reasoningEngines/{cocktail_agent_id}"
 
-    config = {"http_options": {"base_url": f"https://{location}-aiplatform.googleapis.com", "api_version": "v1beta1"}}
+    config = {
+        "http_options": {
+            "base_url": f"https://{location}-aiplatform.googleapis.com",
+            "api_version": "v1beta1",
+        }
+    }
     remote_agent = client.agent_engines.get(name=agent_resource_name, config=config)
 
     # Get agent card
@@ -81,6 +90,7 @@ async def test_remote_cocktail_agent():
             async def receive():
                 byte_data = json.dumps(data).encode("utf-8")
                 return {"type": "http.request", "body": byte_data, "more_body": False}
+
             return receive
 
         scope = {
@@ -137,6 +147,7 @@ async def test_remote_cocktail_agent():
     except Exception as e:
         print(f"\nError: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

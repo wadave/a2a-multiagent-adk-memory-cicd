@@ -37,6 +37,9 @@ logging.basicConfig(level=logging.INFO)
 load_dotenv()
 
 
+from tests import test_config
+
+
 def get_bearer_token():
     """Fetches a Google Cloud bearer token using Application Default Credentials."""
     try:
@@ -61,10 +64,10 @@ async def test_remote_cocktail_agent():
     print("\n=== Testing Remote Cocktail Agent with A2A Client ===\n")
 
     # Configuration
-    project_id = os.environ.get("PROJECT_ID", "dw-genai-dev")
-    location = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
-    project_number = os.environ.get("PROJECT_NUMBER", "496235138247")
-    cocktail_agent_id = "7965234966051160064"
+    project_id = test_config.PROJECT_ID
+    location = test_config.LOCATION
+    project_number = test_config.PROJECT_NUMBER
+    cocktail_agent_id = test_config.COCKTAIL_AGENT_ID
 
     # Initialize Vertex AI
     vertexai.init(project=project_id, location=location)
@@ -73,14 +76,20 @@ async def test_remote_cocktail_agent():
         project=project_id,
         location=location,
         http_options=types.HttpOptions(
-            api_version="v1beta1", base_url=f"https://{location}-aiplatform.googleapis.com/"
+            api_version="v1beta1",
+            base_url=f"https://{location}-aiplatform.googleapis.com/",
         ),
     )
 
     # Get the remote agent
     print("Getting remote agent...")
     agent_resource_name = f"projects/{project_number}/locations/{location}/reasoningEngines/{cocktail_agent_id}"
-    config = {"http_options": {"base_url": f"https://{location}-aiplatform.googleapis.com", "api_version": "v1beta1"}}
+    config = {
+        "http_options": {
+            "base_url": f"https://{location}-aiplatform.googleapis.com",
+            "api_version": "v1beta1",
+        }
+    }
     remote_agent = client.agent_engines.get(name=agent_resource_name, config=config)
 
     # Get agent card

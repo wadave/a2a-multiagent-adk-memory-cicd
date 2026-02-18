@@ -46,7 +46,9 @@ class TestCocktailAgentCard:
         """Verify cocktail skill has proper examples."""
         assert len(cocktail_agent_skill.examples) >= 3
         assert any("Margarita" in example for example in cocktail_agent_skill.examples)
-        assert any("random" in example.lower() for example in cocktail_agent_skill.examples)
+        assert any(
+            "random" in example.lower() for example in cocktail_agent_skill.examples
+        )
 
     def test_cocktail_agent_card_structure(self):
         """Verify cocktail agent card is properly structured."""

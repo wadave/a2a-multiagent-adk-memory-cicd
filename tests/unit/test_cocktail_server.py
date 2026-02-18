@@ -133,7 +133,9 @@ class TestFormatIngredient:
         assert ("y" * 301) not in result
 
     def test_missing_description_key(self):
-        ingredient = {k: v for k, v in SAMPLE_INGREDIENT.items() if k != "strDescription"}
+        ingredient = {
+            k: v for k, v in SAMPLE_INGREDIENT.items() if k != "strDescription"
+        }
         result = format_ingredient(ingredient)
         assert "No description available." in result
 
