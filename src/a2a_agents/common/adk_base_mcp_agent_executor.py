@@ -332,6 +332,8 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
             mcp_server_params = StreamableHTTPConnectionParams(
                 url=mcp_url,
                 headers=mcp_auth_headers,
+                timeout=60.0,  # Increase timeout to 60s for Cloud Run cold starts
+                sse_read_timeout=300.0,  # 5 minutes for SSE reads
             )
 
             async def auto_save_session_to_memory_callback(callback_context):
