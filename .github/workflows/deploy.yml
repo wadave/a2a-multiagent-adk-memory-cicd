@@ -169,18 +169,18 @@ jobs:
 
       # 4. Deploy MCP Servers via Terraform (if images were built)
       - name: Setup Terraform for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
         uses: hashicorp/setup-terraform@v3
 
       - name: Ensure Terraform state bucket exists
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
         run: |
           gcloud storage buckets describe gs://${{ env.PROJECT_ID }}-terraform-state 2>/dev/null || \
           gcloud storage buckets create gs://${{ env.PROJECT_ID }}-terraform-state \
             --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
 
       - name: Terraform Init for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
         run: |
           terraform init \
             -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
@@ -579,18 +579,18 @@ jobs:
 
       # 4. Deploy MCP Servers via Terraform (if images were built)
       - name: Setup Terraform for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
         uses: hashicorp/setup-terraform@v3
 
       - name: Ensure Terraform state bucket exists
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
         run: |
           gcloud storage buckets describe gs://${{ env.PROJECT_ID }}-terraform-state 2>/dev/null || \
           gcloud storage buckets create gs://${{ env.PROJECT_ID }}-terraform-state \
             --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
 
       - name: Terraform Init for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
         run: |
           terraform init \
             -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
