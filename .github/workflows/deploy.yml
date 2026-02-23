@@ -191,7 +191,6 @@ jobs:
         if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
         working-directory: deployment/terraform
         run: |
-          # Use placeholder agent_engine_id for initial MCP deployment
           terraform import \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
@@ -199,8 +198,7 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="agent_engine_id=placeholder" \
+            -var="agent_engine_id=unset" \
             google_cloud_run_v2_service.cocktail_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
 
@@ -211,8 +209,7 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="agent_engine_id=placeholder" \
+            -var="agent_engine_id=unset" \
             google_cloud_run_v2_service.weather_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
 
@@ -226,8 +223,7 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="agent_engine_id=placeholder" \
+            -var="agent_engine_id=unset" \
             -target=google_cloud_run_v2_service.cocktail_mcp_server \
             -target=google_cloud_run_v2_service.weather_mcp_server \
             -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_invoker \
@@ -303,7 +299,7 @@ jobs:
           echo "  Weather: $WEA_MCP_SERVER_URL"
           .venv/bin/python deployment/deploy_agents.py
 
-      # 7. Get Agent Engine ID (only if deploying frontend)
+      # 7. Get Agent Engine ID for frontend and GE registration
       - name: Get Agent Engine ID
         if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
         id: agent_id
@@ -332,6 +328,29 @@ jobs:
           fi
           echo "AGENT_ENGINE_ID=$AGENT_ID" >> $GITHUB_OUTPUT
 
+      # 7b. Get Agent Engine ID for GE registration (soft-fail: skips GE if agent not found)
+      - name: Get Agent Engine ID for GE Registration
+        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true' || steps.changes.outputs.terraform == 'true'
+        id: ge_agent_id
+        run: |
+          # Prefer newly deployed agent ID; fall back to lookup of existing agent
+          if [ -n "${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" ]; then
+            echo "GE_AGENT_ENGINE_ID=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" >> $GITHUB_OUTPUT
+            echo "Using newly deployed Agent Engine ID: ${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}"
+          else
+            AGENT_ID=$(curl -s \
+              -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+              "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
+              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
+              | head -1)
+            echo "GE_AGENT_ENGINE_ID=${AGENT_ID}" >> $GITHUB_OUTPUT
+            if [ -z "$AGENT_ID" ]; then
+              echo "WARNING: No Hosting Agent found. GE registration will be skipped."
+            else
+              echo "Using existing Agent Engine ID: $AGENT_ID"
+            fi
+          fi
+
       # 8. Build Frontend Image (Terraform will deploy it)
       - name: Build Frontend Image
         if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
@@ -353,7 +372,6 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             google_cloud_run_v2_service.a2a_frontend \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
@@ -368,13 +386,31 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             -target=google_cloud_run_v2_service.a2a_frontend \
             -target=google_cloud_run_v2_service_iam_member.frontend_invoker
         working-directory: deployment/terraform
 
-      # 10. Apply full Terraform if Terraform config changed
+      # 10. Register Hosting Agent with Gemini Enterprise
+      # Requires GE_APP_STAGING and OAUTH_CLIENT_ID_SECRET_NAME environment variables to be set in GitHub
+      - name: Terraform Apply Gemini Enterprise Registration
+        if: steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID != '' && vars.GE_APP_STAGING != ''
+        run: |
+          terraform apply -auto-approve \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID }}" \
+            -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
+            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
+            -target=module.gemini_enterprise_oauth \
+            -target=module.gemini_enterprise_agent_engine_register
+        working-directory: deployment/terraform
+
+      # 11. Apply full Terraform if Terraform config changed
       - name: Terraform Apply All (if Terraform config changed)
         if: steps.changes.outputs.terraform == 'true'
         run: |
@@ -385,8 +421,9 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}"
+            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID || 'unset' }}" \
+            -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
+            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}"
         working-directory: deployment/terraform
 
       # 12. Output deployment summary
@@ -399,6 +436,7 @@ jobs:
           echo "  Weather: ${{ steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' && 'DEPLOYED' || 'SKIPPED' }}"
           echo "Agents: ${{ steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true' && 'DEPLOYED' || 'SKIPPED' }}"
           echo "Frontend: ${{ steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' && 'DEPLOYED' || 'SKIPPED' }}"
+          echo "GE Registration: ${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID != '' && vars.GE_APP_STAGING != '' && 'APPLIED' || 'SKIPPED' }}"
           echo ""
           echo "Resource URLs:"
           echo "  Cocktail MCP: ${{ steps.mcp_urls.outputs.CT_MCP_SERVER_URL }}"
@@ -601,7 +639,6 @@ jobs:
         if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
         working-directory: deployment/terraform
         run: |
-          # Use placeholder agent_engine_id for initial MCP deployment
           terraform import \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="staging_project_id=${{ env.PROJECT_ID }}" \
@@ -609,8 +646,7 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="agent_engine_id=placeholder" \
+            -var="agent_engine_id=unset" \
             google_cloud_run_v2_service.cocktail_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
 
@@ -621,8 +657,7 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="agent_engine_id=placeholder" \
+            -var="agent_engine_id=unset" \
             google_cloud_run_v2_service.weather_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
 
@@ -636,8 +671,7 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="agent_engine_id=placeholder" \
+            -var="agent_engine_id=unset" \
             -target=google_cloud_run_v2_service.cocktail_mcp_server \
             -target=google_cloud_run_v2_service.weather_mcp_server \
             -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_invoker \
@@ -713,7 +747,7 @@ jobs:
           echo "  Weather: $WEA_MCP_SERVER_URL"
           .venv/bin/python deployment/deploy_agents.py
 
-      # 7. Get Agent Engine ID (only if deploying frontend)
+      # 7. Get Agent Engine ID for frontend and GE registration
       - name: Get Agent Engine ID
         if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
         id: agent_id
@@ -742,6 +776,29 @@ jobs:
           fi
           echo "AGENT_ENGINE_ID=$AGENT_ID" >> $GITHUB_OUTPUT
 
+      # 7b. Get Agent Engine ID for GE registration (soft-fail: skips GE if agent not found)
+      - name: Get Agent Engine ID for GE Registration
+        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true' || steps.changes.outputs.terraform == 'true'
+        id: ge_agent_id
+        run: |
+          # Prefer newly deployed agent ID; fall back to lookup of existing agent
+          if [ -n "${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" ]; then
+            echo "GE_AGENT_ENGINE_ID=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" >> $GITHUB_OUTPUT
+            echo "Using newly deployed Agent Engine ID: ${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}"
+          else
+            AGENT_ID=$(curl -s \
+              -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+              "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
+              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
+              | head -1)
+            echo "GE_AGENT_ENGINE_ID=${AGENT_ID}" >> $GITHUB_OUTPUT
+            if [ -z "$AGENT_ID" ]; then
+              echo "WARNING: No Hosting Agent found. GE registration will be skipped."
+            else
+              echo "Using existing Agent Engine ID: $AGENT_ID"
+            fi
+          fi
+
       # 8. Build Frontend Image (Terraform will deploy it)
       - name: Build Frontend Image
         if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
@@ -763,7 +820,6 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             google_cloud_run_v2_service.a2a_frontend \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
@@ -778,13 +834,31 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             -target=google_cloud_run_v2_service.a2a_frontend \
             -target=google_cloud_run_v2_service_iam_member.frontend_invoker
         working-directory: deployment/terraform
 
-      # 10. Apply full Terraform if Terraform config changed
+      # 10. Register Hosting Agent with Gemini Enterprise
+      # Requires GE_APP_STAGING and OAUTH_CLIENT_ID_SECRET_NAME environment variables to be set in GitHub
+      - name: Terraform Apply Gemini Enterprise Registration
+        if: steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID != '' && vars.GE_APP_STAGING != ''
+        run: |
+          terraform apply -auto-approve \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="staging_project_id=${{ env.PROJECT_ID }}" \
+            -var="prod_project_id=${{ env.PROJECT_ID }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
+            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
+            -var="repository_owner=wadave" \
+            -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID }}" \
+            -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
+            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
+            -target=module.gemini_enterprise_oauth \
+            -target=module.gemini_enterprise_agent_engine_register
+        working-directory: deployment/terraform
+
+      # 11. Apply full Terraform if Terraform config changed
       - name: Terraform Apply All (if Terraform config changed)
         if: steps.changes.outputs.terraform == 'true'
         run: |
@@ -795,6 +869,7 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}"
+            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID || 'unset' }}" \
+            -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
+            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}"
         working-directory: deployment/terraform
