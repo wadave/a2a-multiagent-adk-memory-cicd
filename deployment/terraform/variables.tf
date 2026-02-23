@@ -71,9 +71,9 @@ variable "ge_app_prod" {
 }
 
 variable "agents_region" {
-  description = "Region for Gemini Enterprise agents"
+  description = "Region for Gemini Enterprise (Discovery Engine API location). Use 'global' for GE apps created in global scope."
   type        = string
-  default     = "us-central1"
+  default     = "global"
 }
 
 variable "auth_id" {

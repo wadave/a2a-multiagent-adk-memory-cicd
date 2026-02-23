@@ -226,8 +226,6 @@ jobs:
             -var="agent_engine_id=unset" \
             -target=google_cloud_run_v2_service.cocktail_mcp_server \
             -target=google_cloud_run_v2_service.weather_mcp_server \
-            -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_invoker \
-            -target=google_cloud_run_v2_service_iam_member.weather_mcp_invoker \
             -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_compute_invoker \
             -target=google_cloud_run_v2_service_iam_member.weather_mcp_compute_invoker
         working-directory: deployment/terraform
@@ -406,11 +404,13 @@ jobs:
             -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID }}" \
             -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
             -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
+            -var="agents_region=global" \
             -target=module.gemini_enterprise_oauth \
             -target=module.gemini_enterprise_agent_engine_register
         working-directory: deployment/terraform
 
       # 11. Apply full Terraform if Terraform config changed
+      # Uses GE agent ID from step 7b if available; GE module self-skips when agent_engine_id=unset
       - name: Terraform Apply All (if Terraform config changed)
         if: steps.changes.outputs.terraform == 'true'
         run: |
@@ -421,9 +421,10 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID || 'unset' }}" \
+            -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID || steps.agent_id.outputs.AGENT_ENGINE_ID || 'unset' }}" \
             -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
-            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}"
+            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
+            -var="agents_region=global"
         working-directory: deployment/terraform
 
       # 12. Output deployment summary
@@ -674,8 +675,6 @@ jobs:
             -var="agent_engine_id=unset" \
             -target=google_cloud_run_v2_service.cocktail_mcp_server \
             -target=google_cloud_run_v2_service.weather_mcp_server \
-            -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_invoker \
-            -target=google_cloud_run_v2_service_iam_member.weather_mcp_invoker \
             -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_compute_invoker \
             -target=google_cloud_run_v2_service_iam_member.weather_mcp_compute_invoker
         working-directory: deployment/terraform
@@ -854,11 +853,13 @@ jobs:
             -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID }}" \
             -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
             -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
+            -var="agents_region=global" \
             -target=module.gemini_enterprise_oauth \
             -target=module.gemini_enterprise_agent_engine_register
         working-directory: deployment/terraform
 
       # 11. Apply full Terraform if Terraform config changed
+      # Uses GE agent ID from step 7b if available; GE module self-skips when agent_engine_id=unset
       - name: Terraform Apply All (if Terraform config changed)
         if: steps.changes.outputs.terraform == 'true'
         run: |
@@ -869,7 +870,8 @@ jobs:
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=a2a-multiagent-adk-memory-cicd" \
             -var="repository_owner=wadave" \
-            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID || 'unset' }}" \
+            -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID || steps.agent_id.outputs.AGENT_ENGINE_ID || 'unset' }}" \
             -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
-            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}"
+            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
+            -var="agents_region=global"
         working-directory: deployment/terraform
