@@ -314,7 +314,7 @@ jobs:
             AGENT_ID=$(curl -s \
               -H "Authorization: Bearer $(gcloud auth print-access-token)" \
               "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
-              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent adk-mb - ADK") | .name' \
+              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
               | head -1)
 
             if [ -z "$AGENT_ID" ]; then
@@ -339,7 +339,7 @@ jobs:
             AGENT_ID=$(curl -s \
               -H "Authorization: Bearer $(gcloud auth print-access-token)" \
               "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
-              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent adk-mb - ADK") | .name' \
+              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
               | head -1)
             echo "GE_AGENT_ENGINE_ID=${AGENT_ID}" >> $GITHUB_OUTPUT
             if [ -z "$AGENT_ID" ]; then
@@ -588,7 +588,7 @@ jobs:
           HOSTING_AGENT=$(curl -s \
             -H "Authorization: Bearer $(gcloud auth print-access-token)" \
             "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines" \
-            | jq -r '.reasoningEngines[] | select(.displayName == "Hosting Agent adk-mb - ADK") | .name' \
+            | jq -r '.reasoningEngines[] | select(.displayName == "Hosting Agent ADK-MB") | .name' \
             | head -1)
           if [ -n "$HOSTING_AGENT" ]; then
             echo "AGENTS_EXIST=true" >> $GITHUB_OUTPUT
@@ -763,7 +763,7 @@ jobs:
             AGENT_ID=$(curl -s \
               -H "Authorization: Bearer $(gcloud auth print-access-token)" \
               "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
-              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent adk-mb - ADK") | .name' \
+              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
               | head -1)
 
             if [ -z "$AGENT_ID" ]; then
@@ -788,7 +788,7 @@ jobs:
             AGENT_ID=$(curl -s \
               -H "Authorization: Bearer $(gcloud auth print-access-token)" \
               "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
-              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent adk-mb - ADK") | .name' \
+              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
               | head -1)
             echo "GE_AGENT_ENGINE_ID=${AGENT_ID}" >> $GITHUB_OUTPUT
             if [ -z "$AGENT_ID" ]; then
