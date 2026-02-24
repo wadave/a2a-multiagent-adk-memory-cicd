@@ -169,18 +169,18 @@ jobs:
 
       # 4. Deploy MCP Servers via Terraform (if images were built)
       - name: Setup Terraform for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
         uses: hashicorp/setup-terraform@v3
 
       - name: Ensure Terraform state bucket exists
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
         run: |
           gcloud storage buckets describe gs://${{ env.PROJECT_ID }}-terraform-state 2>/dev/null || \
           gcloud storage buckets create gs://${{ env.PROJECT_ID }}-terraform-state \
             --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
 
       - name: Terraform Init for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
         run: |
           terraform init \
             -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
@@ -328,7 +328,7 @@ jobs:
 
       # 7b. Get Agent Engine ID for GE registration (soft-fail: skips GE if agent not found)
       - name: Get Agent Engine ID for GE Registration
-        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true' || steps.changes.outputs.terraform == 'true'
+        if: vars.GE_APP_STAGING != ''
         id: ge_agent_id
         run: |
           # Prefer newly deployed agent ID; fall back to lookup of existing agent
@@ -339,7 +339,7 @@ jobs:
             AGENT_ID=$(curl -s \
               -H "Authorization: Bearer $(gcloud auth print-access-token)" \
               "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
-              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
+              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent adk-mb - ADK") | .name' \
               | head -1)
             echo "GE_AGENT_ENGINE_ID=${AGENT_ID}" >> $GITHUB_OUTPUT
             if [ -z "$AGENT_ID" ]; then
@@ -618,18 +618,18 @@ jobs:
 
       # 4. Deploy MCP Servers via Terraform (if images were built)
       - name: Setup Terraform for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
         uses: hashicorp/setup-terraform@v3
 
       - name: Ensure Terraform state bucket exists
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
         run: |
           gcloud storage buckets describe gs://${{ env.PROJECT_ID }}-terraform-state 2>/dev/null || \
           gcloud storage buckets create gs://${{ env.PROJECT_ID }}-terraform-state \
             --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
 
       - name: Terraform Init for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true'
+        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
         run: |
           terraform init \
             -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
@@ -777,7 +777,7 @@ jobs:
 
       # 7b. Get Agent Engine ID for GE registration (soft-fail: skips GE if agent not found)
       - name: Get Agent Engine ID for GE Registration
-        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true' || steps.changes.outputs.terraform == 'true'
+        if: vars.GE_APP_STAGING != ''
         id: ge_agent_id
         run: |
           # Prefer newly deployed agent ID; fall back to lookup of existing agent
@@ -788,7 +788,7 @@ jobs:
             AGENT_ID=$(curl -s \
               -H "Authorization: Bearer $(gcloud auth print-access-token)" \
               "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
-              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
+              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent adk-mb - ADK") | .name' \
               | head -1)
             echo "GE_AGENT_ENGINE_ID=${AGENT_ID}" >> $GITHUB_OUTPUT
             if [ -z "$AGENT_ID" ]; then
