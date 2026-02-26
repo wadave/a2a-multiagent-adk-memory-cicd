@@ -1,10 +1,5 @@
 # A2A Multi-Agent with Memory Bank (adk-mb)
 
-> **⚠️ DISCLAIMER**: THIS DEMO IS INTENDED FOR DEMONSTRATION PURPOSES ONLY. IT IS NOT INTENDED FOR USE IN A PRODUCTION ENVIRONMENT.
->
-> **⚠️ Important**: A2A is a work in progress (WIP). In the near future there might be changes that are different from what is demonstrated here.
->
-
 This document describes a multi-agent setup using Agent2Agent (A2A), ADK (Agent Development Kit), Agent Engine, MCP (Model Context Protocol) servers, and **Vertex AI Memory Bank** for conversation persistence. The application demonstrates how the A2A protocol works between agents with memory capabilities.
 
 ## Overview
@@ -17,19 +12,66 @@ This web application demonstrates the integration of Google's open-source framew
 - **Memory Bank Integration**: Conversation history persisted using Vertex AI Memory Bank (the "mb" in "adk-mb")
 - **MCP Protocol**: Agents communicate with remote MCP servers for data retrieval
 - **A2A Protocol**: Standardized agent-to-agent communication
+- **Cloud Logging**: Integrated Google Cloud Logging for unified observability across all agents
 - **CI/CD Pipeline**: Automated deployment using GitHub Actions and Terraform
+- **Performance Optimization**: Shared HTTP client pooling and metadata caching for reduced latency
 
 ### Architecture
 
-The application utilizes a multi-agent architecture where a host agent delegates tasks to remote A2A agents (Cocktail and Weather) based on the user's query. These agents then interact with corresponding remote MCP servers.
+The application demonstrates a multi-agent orchestration pattern using Google's **Agent2Agent (A2A)** and **Agent Development Kit (ADK)** frameworks. This architecture enables secure, modular communication between a central host and specialized remote agents.
 
-**Host Agent is built using A2A Server with Memory Bank integration.**
+![architecture](assets/a2a-ae.jpeg)
 
-![architecture](asset/a2a_ae_diagram.png)
+#### 1. Entry Point: Frontend
+The system supports two parallel entry point options for user interaction:
+- **Option A: Customized Frontend**: A **Gradio** web interface hosted on **Google Cloud Run**. This acts as an explicit A2A client that communicates securely with the orchestrator.
+- **Option B: Gemini Enterprise UI**: Direct interaction via the **Gemini Enterprise UI**, utilizing standard **OAuth** for secure authentication and access.
+
+#### 2. Orchestration: Host Agent
+The **Host Agent** serves as the central "brain" within a Vertex AI **Agent Engine** environment.
+- **Routing**: Analyzes user queries and delegates tasks to specialized downstream agents using the A2A protocol.
+- **Context Persistence**: Integrates with **Vertex AI Memory Bank** to maintain conversation history and semantic context across user sessions.
+
+#### 3. Specialists: Cocktail & Weather Agents
+Specialized **Remote A2A Agents** handle domain-specific queries in isolated environments:
+- **Cocktail Agent**: Manages recipes, ingredients, and mixology data.
+- **Weather Agent**: Handles meteorological forecasts and alerts.
+Each agent leverages **ADK** for internal logic and an **MCP Client** for external data retrieval.
+
+#### 4. Data Retrieval: MCP Servers
+Agents retrieve real-time information through **Model Context Protocol (MCP)** servers acting as standardized adapters:
+- **Standardized Tools**: MCP servers translate agent requests into specific API calls.
+- **External Sources**: Pulls data from sources like TheCocktailDB and the National Weather Service.
+
+**The Host Agent is built using A2A Server with built-in Memory Bank integration.**
+
+## Security
+
+The application implements a multi-layered security strategy for different components:
+
+- **Gemini Enterprise UI**: Utilizes **OAuth** for secure user authentication and access control.
+- **Service Authentication**: Other services, including specialized agents and MCP servers, utilize **Google Cloud IAM** and **Service Accounts** for secure, programmatic authentication.
+- **Credential Management**: Sensitive credentials, such as Github tokens and OAuth secrets, are stored and managed using **Google Cloud Secret Manager** to ensure they are never exposed in the codebase or logs.
+
+## Observability
+
+The application uses **Google Cloud Logging** to provide structured, centralized logging across all agents and the frontend.
+
+- **Centralized Logs**: All agents (Host, Cocktail, Weather) send logs to a single location in Google Cloud.
+- **Agent-Specific Logs**: Each agent has its own log stream (e.g., `hosting-agent`, `cocktail-agent`) for easier filtering.
+- **Graceful Degradation**: The logging system automatically falls back to standard Python logging if `PROJECT_ID` is not set, ensuring local development remains friction-less.
+
+## Performance & Resource Management
+
+The application implements several optimization patterns to ensure high performance and efficient resource utilization:
+
+- **HTTP Client Reuse**: Both the Gradio frontend and the Orchestrator use a shared `httpx.AsyncClient` singleton. This enables **connection pooling**, reducing the overhead of establishing new TCP/TLS connections for every request.
+- **Metadata Caching**: The frontend caches the `agent_card` metadata (retrieved from Vertex AI) to avoid redundant API calls during the session.
+- **Graceful Lifespan Management**: MCP servers use the `lifespan` context manager to handle startup and shutdown logic. This ensures that resources like HTTP clients are properly closed when the server stops, preventing memory leaks and orphaned connections.
 
 ### Application Screenshot
 
-![screenshot](asset/screenshot.png)
+![screenshot](assets/screenshot.png)
 
 ## Core Components
 
@@ -48,16 +90,16 @@ The agents interact with the following MCP servers:
 1. **Cocktail MCP Server** (`cocktail-remote-mcp-server-adk-mb`)
    - Provides 5 tools:
      - `search cocktail by name`
-     - `list all cocktail by first letter`
+     - `list cocktails by first letter`
      - `search ingredient by name`
      - `list random cocktails`
-     - `lookup full cocktail details by id`
+     - `lookup cocktail details by id`
 
 2. **Weather MCP Server** (`weather-remote-mcp-server-adk-mb`)
    - Provides 3 tools:
-     - `get weather forecast by city name`
-     - `get weather forecast by coordinates`
-     - `get weather alert by state code`
+     - `get forecast by city`
+     - `get forecast`
+     - `get alerts`
 
 ### Frontend
 
@@ -84,7 +126,7 @@ Here are some example questions you can ask the chatbot:
 
 ```
 .
-├── asset/                          # Static assets
+├── assets/                          # Static assets
 │   ├── a2a_ae_diagram.png
 │   └── screenshot.png
 ├── deployment/                     # Deployment scripts and configs
@@ -124,7 +166,16 @@ Here are some example questions you can ask the chatbot:
 │       ├── cocktail_mcp_server/
 │       └── weather_mcp_server/
 ├── tests/                        # Test files
+│   ├── unit/                     # Unit tests
 │   ├── integration/              # Integration tests
+│   ├── eval/                     # Agent evaluation suite
+│   └── TESTING_SUMMARY.md        # Summary of test coverage
+├── cicd-setup.md                 # CI/CD configuration guide
+├── FORKED_REPO_CICD.md           # Guide for forked repositories
+├── github-actions-wif-auth.md     # WIF authentication guide
+├── pyproject.toml                # Project dependencies
+├── uv.lock                       # Dependency lock file
+└── LICENSE                       # Project license
 │   ├── load_test/                # Load testing
 │   └── unit/                     # Unit tests
 ├── .github/
@@ -189,8 +240,8 @@ GOOGLE_GENAI_USE_VERTEXAI=1
 GOOGLE_API_KEY=your-api-key-here
 
 # Vertex AI backend config (recommended)
-GOOGLE_CLOUD_PROJECT="your-project-id"
-GOOGLE_CLOUD_LOCATION="us-central1"
+PROJECT_ID="your-project-id"
+LOCATION="us-central1"
 
 # Project configuration
 PROJECT_NUMBER="your-project-number"
@@ -342,6 +393,39 @@ gcloud run services describe a2a-frontend-adk-mb \
   --format="value(status.url)"
 ```
 
+### Securing the Frontend
+
+To restrict access to the frontend so only you can access it, you need to remove public access and grant invoker permissions to your Google account.
+
+1. **Remove public access (Require Authentication):**
+    ```bash
+    gcloud run services remove-iam-policy-binding a2a-frontend-adk-mb \
+      --region=${GOOGLE_CLOUD_REGION} \
+      --project=${PROJECT_ID} \
+      --member="allUsers" \
+      --role="roles/run.invoker"
+    ```
+
+2. **Grant access directly to your account:**
+    ```bash
+    gcloud run services add-iam-policy-binding a2a-frontend-adk-mb \
+      --region=${GOOGLE_CLOUD_REGION} \
+      --project=${PROJECT_ID} \
+      --member="user:YOUR_GOOGLE_EMAIL" \
+      --role="roles/run.invoker"
+    ```
+
+**Note:** Once secured, standard browsing will result in a 403 Forbidden error. To access the secured frontend locally, use the Cloud Run proxy:
+
+```bash
+gcloud run services proxy a2a-frontend-adk-mb \
+  --region=${GOOGLE_CLOUD_REGION} \
+  --project=${PROJECT_ID} \
+  --port=8080
+```
+
+Then visit `http://localhost:8080` in your browser.
+
 #### 4. Configure IAM Permissions
 
 Grant the compute service account permission to invoke MCP servers:
@@ -368,7 +452,7 @@ gcloud run services add-iam-policy-binding weather-remote-mcp-server-adk-mb \
 ### CI/CD Deployment (Recommended)
 
 The project includes automated deployment via GitHub Actions using Workload Identity Federation (no service account keys needed!).
-![CI/CD](asset/github-gcp-auth-flow.jpg)
+![CI/CD](assets/github-gcp-auth-flow.jpg)
 
 #### Quick Start
 
@@ -555,7 +639,10 @@ See [tests/load_test/README_COMPREHENSIVE.md](tests/load_test/README_COMPREHENSI
 - **Evaluation Tests**: 14+ test cases with quality rubrics
 - **Load Tests**: Multi-scenario performance testing with weighted query distribution
 
-## Monitoring and Debugging
+## Observability, Monitoring, and Debugging
+
+### Observability
+The application integrates with **Google Cloud Logging** to provide comprehensive observability. All agent interactions, system events, and errors are logged, enabling detailed tracing and monitoring of the multi-agent orchestration flow.
 
 ### View Logs
 

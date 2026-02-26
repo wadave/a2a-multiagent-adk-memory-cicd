@@ -15,7 +15,7 @@
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from a2a.types import AgentCard, AgentSkill
+from a2a.types import AgentCard, AgentSkill, AgentCapabilities
 
 from a2a_agents.common.adk_orchestrator_agent import AdkOrchestratorAgent
 
@@ -72,12 +72,17 @@ class TestOrchestratorAgentRegistration:
             description="A test skill",
             tags=["test"],
             examples=["test query"],
+            version="1.0.0",
         )
         return AgentCard(
             name="Test Agent",
             description="A test agent",
             url="http://test.com",
             skills=[skill],
+            version="1.0.0",
+            default_input_modes=["text/plain"],
+            default_output_modes=["text/plain"],
+            capabilities=AgentCapabilities(),
         )
 
     def test_register_agent_card(self, orchestrator, sample_agent_card):
@@ -95,12 +100,20 @@ class TestOrchestratorAgentRegistration:
             description="First agent",
             url="http://agent1.com",
             skills=[],
+            version="1.0.0",
+            default_input_modes=["text/plain"],
+            default_output_modes=["text/plain"],
+            capabilities=AgentCapabilities(),
         )
         card2 = AgentCard(
             name="Agent 2",
             description="Second agent",
             url="http://agent2.com",
             skills=[],
+            version="1.0.0",
+            default_input_modes=["text/plain"],
+            default_output_modes=["text/plain"],
+            capabilities=AgentCapabilities(),
         )
 
         orchestrator.register_agent_card(card1)
@@ -129,6 +142,10 @@ class TestOrchestratorAgentListing:
                 description=f"Description for agent {i}",
                 url=f"http://agent{i}.com",
                 skills=[],
+                version="1.0.0",
+                default_input_modes=["text/plain"],
+                default_output_modes=["text/plain"],
+                capabilities=AgentCapabilities(),
             )
             orchestrator.register_agent_card(card)
 
@@ -251,6 +268,10 @@ class TestOrchestratorInstructionGeneration:
             description="Weather agent",
             url="http://weather.com",
             skills=[],
+            version="1.0.0",
+            default_input_modes=["text/plain"],
+            default_output_modes=["text/plain"],
+            capabilities=AgentCapabilities(),
         )
         orchestrator.register_agent_card(card)
 

@@ -50,6 +50,7 @@ class TestGoogleAuthClass:
 
         auth = GoogleAuth()
         mock_request = MagicMock()
+        mock_request.headers = {}
 
         # Execute auth flow
         flow = auth.auth_flow(mock_request)
@@ -71,6 +72,7 @@ class TestGoogleAuthClass:
 
         auth = GoogleAuth()
         mock_request = MagicMock()
+        mock_request.headers = {}
 
         # Execute auth flow
         flow = auth.auth_flow(mock_request)

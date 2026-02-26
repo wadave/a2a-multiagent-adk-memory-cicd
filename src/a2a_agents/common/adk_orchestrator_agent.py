@@ -38,7 +38,7 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents.readonly_context import ReadonlyContext
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
-
+from a2a_agents.common.agent_configs import DEFAULT_MODEL
 from a2a_agents.common.remote_connection import RemoteAgentConnections, TaskUpdateCallback
 
 logger = logging.getLogger(__name__)
@@ -120,7 +120,13 @@ class AdkOrchestratorAgent:
         """
         # Use asyncio.gather for Python 3.10 compatibility (TaskGroup is 3.11+)
         tasks = [self.retrieve_card(address) for address in remote_agent_addresses]
-        await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Log any individual failures but keep the others
+        for addr, res in zip(remote_agent_addresses, results):
+            if isinstance(res, Exception):
+                logger.error(f"Failed to initialize remote agent at {addr}: {res}")
+
         # Once completed the self.agents string is set and the remote
         # connections are established.
 
@@ -155,7 +161,7 @@ class AdkOrchestratorAgent:
     def create_agent(self) -> Agent:
         """Creates the orchestrator agent."""
         return Agent(
-            model="gemini-2.5-flash",
+            model=DEFAULT_MODEL,
             name="orchestrator_agent",
             instruction=self.root_instruction,
             before_model_callback=self.before_model_callback,
@@ -296,8 +302,11 @@ Current agent: {current_agent["active_agent"]} """
             tool_context.actions.skip_summarization = True
             tool_context.actions.escalate = True
         elif task.status.state == TaskState.canceled:
-            # Open question, should we return some info for cancellation instead
-            raise ValueError(f"Agent {agent_name} task {task.id} is cancelled")
+            return types.Content(
+                role=Role.assistant,
+                parts=[types.Part(text=f"Agent {agent_name} task was canceled.")]
+            )
+
         elif task.status.state == TaskState.failed:
             # Raise error for failure
             raise ValueError(f"Agent {agent_name} task {task.id} failed")

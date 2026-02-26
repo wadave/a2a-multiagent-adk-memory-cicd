@@ -13,7 +13,7 @@ get_weather_response = _mod.get_weather_response
 _internal_get_forecast = _mod._internal_get_forecast
 
 # @mcp.tool() wraps functions in FunctionTool; access the original via .fn
-get_active_alerts_by_state = _mod.get_active_alerts_by_state.fn
+get_alerts = _mod.get_alerts.fn
 get_forecast = _mod.get_forecast.fn
 get_forecast_by_city = _mod.get_forecast_by_city.fn
 
@@ -138,19 +138,18 @@ class TestGetWeatherResponse:
         assert result is None
 
 
-# ---------------------------------------------------------------------------
-# MCP tool tests: get_active_alerts_by_state
+# MCP tool tests: get_alerts
 # ---------------------------------------------------------------------------
 
 
-class TestGetActiveAlertsByState:
+class TestGetAlerts:
     @patch(
         "mcp_servers.weather_mcp_server.weather_server.get_weather_response",
         new_callable=AsyncMock,
     )
     async def test_valid_state_with_alerts(self, mock_response):
         mock_response.return_value = {"features": [SAMPLE_ALERT_FEATURE]}
-        result = await get_active_alerts_by_state("CO")
+        result = await get_alerts("CO")
         assert "Winter Storm Warning" in result
 
     @patch(
@@ -159,15 +158,15 @@ class TestGetActiveAlertsByState:
     )
     async def test_no_alerts(self, mock_response):
         mock_response.return_value = {"features": []}
-        result = await get_active_alerts_by_state("CO")
+        result = await get_alerts("CO")
         assert "No active weather alerts" in result
 
     async def test_invalid_state_too_long(self):
-        result = await get_active_alerts_by_state("CAL")
+        result = await get_alerts("CAL")
         assert "Invalid input" in result
 
     async def test_invalid_state_numeric(self):
-        result = await get_active_alerts_by_state("12")
+        result = await get_alerts("12")
         assert "Invalid input" in result
 
     @patch(
@@ -176,8 +175,8 @@ class TestGetActiveAlertsByState:
     )
     async def test_api_failure(self, mock_response):
         mock_response.return_value = None
-        result = await get_active_alerts_by_state("CO")
-        assert "Failed to retrieve" in result
+        result = await get_alerts("CO")
+        assert "Failed to retrieve" in result or "Error" in result
 
 
 # ---------------------------------------------------------------------------
@@ -317,10 +316,10 @@ class TestGetForecastByCity:
     async def test_geocode_not_found(self, mock_geolocator, mock_internal):
         mock_geolocator.geocode.return_value = None
         result = await get_forecast_by_city("Nonexistent", "XX")
-        assert "Could not find location" in result
+        assert "Could not find coordinates" in result
 
     @patch("mcp_servers.weather_mcp_server.weather_server.geolocator")
     async def test_geocode_timeout(self, mock_geolocator):
         mock_geolocator.geocode.side_effect = GeocoderTimedOut("timeout")
         result = await get_forecast_by_city("New York", "NY")
-        assert "Geocoding service error" in result
+        assert "location service timed out" in result

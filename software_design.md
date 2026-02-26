@@ -1,0 +1,145 @@
+# Software Design Document: A2A Multi-Agent System with Memory Bank
+
+## 1. Introduction
+
+### 1.1 Purpose
+
+The purpose of this document is to provide a comprehensive technical design for the A2A Multi-Agent system. This system leverages the Google Agent Development Kit (ADK), Agent-to-Agent (A2A) protocol, and Vertex AI Memory Bank to provide a persistent, multi-specialist AI assistant capable of handling weather and cocktail-related inquiries with long-term memory.
+
+### 1.2 Scope
+
+This document covers the architectural patterns, component design, data flow, security model, and deployment strategy for the entire ecosystem, including the frontend UI, orchestrator agent, specialist agents, and MCP servers.
+
+## 2. System Overview
+
+The system follows a **Host/Specialist Architecture** pattern.
+
+- **The Host (Orchestrator)** acts as the primary interface for the user, decomposing complex requests and routing tasks to the appropriate specialist agents via the A2A protocol.
+- **Specialist Agents** are fine-tuned for specific domains (Weather, Cocktails) and utilize the Model Context Protocol (MCP) to interact with external data sources.
+- **Persistent Memory** is achieved through integration with the Vertex AI Memory Bank, which stores and retrieves semantic context across sessions.
+- **Resource Management**: Efficient connection pooling and metadata caching are implemented to minimize latency and resource consumption.
+
+## 3. Architectural Design
+
+### 3.1 High-Level Architecture
+
+The following diagram illustrates the system's core components and their interactions.
+
+```mermaid
+graph TD
+    User((User)) --> CustomUI[Gradio Frontend]
+    User((User)) --> GeminiEnt[Gemini Enterprise]
+    CustomUI --> Orchestrator[Orchestrator Agent - A2A Host]
+    GeminiEnt --> Orchestrator[Orchestrator Agent - A2A Host]
+    Orchestrator --> MemoryBank[(Vertex AI Memory Bank)]
+    Orchestrator -- A2A Protocol --> Specialist1[Cocktail Agent - Specialist]
+    Orchestrator -- A2A Protocol --> Specialist2[Weather Agent - Specialist]
+
+    Specialist1 -- MCP/SSE --> MCPServer1[Cocktail MCP Server]
+    Specialist2 -- MCP/SSE --> MCPServer2[Weather MCP Server]
+
+    MCPServer1 --> CocktailAPI[TheCocktailDB API]
+    MCPServer2 --> WeatherAPI[National Weather Service API]
+```
+
+### 3.2 Technology Stack
+
+| Component         | Technology                                         |
+| :---------------- | :------------------------------------------------- |
+| **Language**      | Python 3.10+                                       |
+| **AI Framework**  | Google Agent Development Kit (ADK)                 |
+| **Protocols**     | A2A (Agent-to-Agent), MCP (Model Context Protocol) |
+| **Communication** | SSE (Server-Sent Events) for MCP, JSON-RPC for A2A |
+| **Compute**       | Google Cloud Run, Vertex AI Reasoning Engine       |
+| **Storage**       | Vertex AI Memory Bank                              |
+| **Security**      | IAM, Workload Identity Federation, Secret Manager  |
+| **CI/CD**         | GitHub Actions, Terraform                          |
+| **UI**            | Gradio                                             |
+
+## 4. Detailed Design
+
+### 4.1 Orchestrator Agent (A2A Host)
+
+Implemented in `AdkOrchestratorAgent`, the orchestrator serves as the central hub.
+
+- **Task Decomposition**: Analyzes user intent and determines if a specialist is needed.
+- **Routing**: Uses the `send_message` tool to delegate tasks to specialists.
+- **Memory Integration**: Executes an `after_agent_callback` to save sessions to the Memory Bank.
+- **Context Management**: Preloads relevant semantic memories using ADK integration before generating responses.
+
+### 4.2 Specialist Agents
+
+Each specialist (e.g., `CocktailAgent`, `WeatherAgent`) inherits from `AdkBaseMcpAgentExecutor`.
+
+- **Domain Specificity**: Configured with specialized instructions and tools.
+- **MCP Tooling**: Connects to remote MCP servers via environment-configured URLs (`CT_MCP_SERVER_URL`, `WEA_MCP_SERVER_URL`).
+- **Autonomy**: Can resolve domain-specific tasks independently while reporting results back to the orchestrator.
+
+### 4.3 MCP Servers
+
+The MCP servers are built using `FastMCP` and exposed as Cloud Run services.
+
+- **Cocktail Server**: Provides tools for searching recipes, ingredients, and random cocktails.
+- **Weather Server**: Provides tools for city-based forecasts and active weather alerts.
+- **Statelessness**: Servers are designed to be stateless, processing individual tool calls with minimal overhead.
+- **Lifecycle Management**: Implemented using `FastMCP(lifespan=...)` to ensure `httpx.AsyncClient` is gracefully closed upon server shutdown.
+
+### 4.4 Performance Optimization
+
+The system employs several patterns to optimize throughput and reduce latency:
+
+- **Connection Pooling**: A shared `httpx.AsyncClient` is used across the frontend and orchestrator. This allows for persistent TCP connections, avoiding the frequent overhead of TLS handshakes for internal and external API calls.
+- **Metadata Caching**: The frontend implements a memory cache for the `agent_card` metadata retrieved from Vertex AI. This prevents multiple redundant network round-trips to the Vertex AI Control Plane for static agent definitions.
+- **Async I/O Efficiency**: All network interactions (A2A, MCP, and external APIs) utilize non-blocking `asyncio` patterns, ensuring the host can handle multiple concurrent sessions without thread exhaustion.
+
+### 4.5 Memory Bank Integration
+
+Persistent context is managed through the Vertex AI Memory Bank.
+
+- **Auto-Saving**: The `auto_save_session_to_memory_callback` extracts conversation events post-invocation and persists them.
+- **Semantic Retrieval**: Future conversations trigger a search in the memory bank to "remind" the agent of user preferences or past interactions (e.g., "What was that drink I liked last week?").
+
+## 5. Security Considerations
+
+### 5.1 Zero-Trust Architecture
+
+- **No Static Keys**: Secrets (API keys, OAuth tokens) are retrieved dynamically from **Google Cloud Secret Manager**.
+- **Least Privilege**: Service accounts are granted only the minimum required IAM permissions (e.g., `roles/aiplatform.user`, `roles/run.invoker`).
+- **WIF Authentication**: CI/CD pipelines use Workload Identity Federation to authenticate with GCP, eliminating the need for long-lived service account keys in GitHub.
+
+### 5.2 Data Protection
+
+- **Communication Security**: All agent-to-agent and agent-to-MCP communication is encrypted via HTTPS.
+- **Access Control**: The Gradio frontend is restricted to authorized users via Cloud Run IAM configuration.
+
+## 6. Deployment Architecture
+
+### 6.1 Infrastructure as Code (Terraform)
+
+The environment consists of several Terraform-managed resources:
+
+- `google_cloud_run_v2_service`: For hosting MCP servers and the frontend.
+- `google_service_account`: Dedicated identities for each component.
+- `google_project_service`: Automatic enablement of required APIs (e.g., `aiplatform.googleapis.com`).
+
+### 6.2 CI/CD Pipeline
+
+GitHub Actions automates the lifecycle:
+
+- **Build**: Containerizes Gradio and MCP servers.
+- **Deploy**: Updates Cloud Run services and deploys agents to Vertex AI Reasoning Engine.
+- **Versioning**: Each deployment is tracked via Git tags and Terraform state.
+
+## 7. Testing Strategy
+
+The project employs a multi-tiered testing strategy:
+
+1.  **Unit Tests**: Local validation of agent logic and tool functions (`pytest`).
+2.  **Integration Tests**: Verifying communication between Orchestrator and Specialists.
+3.  **Evaluation (Eval) Suite**: Uses Gemini to score agent performance based on accuracy and helpfulness metrics.
+4.  **Load Testing**: Simulating concurrent users to ensure stability under stress (`locust`).
+
+## 8. Appendices
+
+- **Source Code**: [GitHub Repository](https://github.com/wadave/a2a-multiagent-adk-memory-cicd)
+- **Reference Docs**: [ADK Documentation](https://cloud.google.com/vertex-ai/docs/generative-ai/agent-dev-kit)

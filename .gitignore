@@ -263,3 +263,4 @@ tools/a2a-inspector/
 
 # Log files
 logs/
+.adk

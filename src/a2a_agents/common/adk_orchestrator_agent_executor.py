@@ -36,10 +36,27 @@ from google.genai import types
 from a2a_agents.common.adk_orchestrator_agent import get_orchestrator_agent
 from a2a_agents.common.auth_utils import GoogleAuth
 from a2a_agents.common.adk_base_mcp_agent_executor import PersistentVertexAiMemoryBankService
+from a2a_agents.common.logging_utils import setup_cloud_logging
 
 # Set logging
 logging.getLogger().setLevel(logging.INFO)
 load_dotenv()
+
+
+# Global shared HTTP client for the orchestrator
+_shared_httpx_client: httpx.AsyncClient | None = None
+
+
+def get_shared_httpx_client() -> httpx.AsyncClient:
+    """Gets or creates a shared httpx.AsyncClient with GoogleAuth."""
+    global _shared_httpx_client
+    if _shared_httpx_client is None:
+        _shared_httpx_client = httpx.AsyncClient(
+            timeout=120,
+            auth=GoogleAuth(),
+        )
+        _shared_httpx_client.headers["Content-Type"] = "application/json"
+    return _shared_httpx_client
 
 
 class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
@@ -72,6 +89,9 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         self.project_id = os.environ.get("PROJECT_ID")
         self.location = os.environ.get("LOCATION")
 
+        # Setup Cloud Logging
+        setup_cloud_logging(log_name="hosting-agent")
+
         if self.agent_engine_id is None:
             # Check environment variable first (may be set on Vertex AI or during deploy)
             self.agent_engine_id = os.environ.get("AGENT_ENGINE_ID")
@@ -102,11 +122,9 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         """
         if self.agent is None:
             # --- Environment setup ---
-            httpx_client = httpx.AsyncClient(
-                timeout=120,
-                auth=GoogleAuth(),
-            )
-            httpx_client.headers["Content-Type"] = "application/json"
+            # Use the shared HTTP client for efficiency and connection pooling
+            httpx_client = get_shared_httpx_client()
+
             # Create the actual agent
             self.agent = await get_orchestrator_agent(
                 remote_agent_addresses=self.remote_agent_addresses,
@@ -189,8 +207,11 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         await updater.start_work()
 
         try:
+            # Resolve user ID dynamically from request headers
+            user_id = self._get_user_id(context)
+
             # Get or create a session for this conversation
-            session = await self._get_or_create_session(context_id)
+            session = await self._get_or_create_session(context_id, user_id=user_id)
             logging.info(f"Using session: {session.id}")
 
             # Prepare the user message in ADK format
@@ -208,7 +229,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
 
             async for event in runner.run_async(
                 session_id=session.id,
-                user_id="user",  # In production, use actual user ID
+                user_id=user_id,
                 new_message=content,
             ):
                 # The agent may produce multiple events
@@ -241,7 +262,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             # Re-raise for proper error handling up the stack
             raise
 
-    async def _get_or_create_session(self, context_id: str):
+    async def _get_or_create_session(self, context_id: str, user_id: str = "user"):
         """Get existing session or create new one.
 
         Note: For Vertex AI Session Service, we create a new session each time
@@ -257,7 +278,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             # For in-memory sessions, we can use the context_id directly
             session = await runner.session_service.get_session(
                 app_name=runner.app_name,
-                user_id="user",
+                user_id=user_id,
                 session_id=context_id,
             )
 
@@ -265,7 +286,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
                 logging.info(f"No session found for {context_id}, creating new one.")
                 session = await runner.session_service.create_session(
                     app_name=runner.app_name,
-                    user_id="user",
+                    user_id=user_id,
                     session_id=context_id,
                 )
             else:
@@ -276,11 +297,12 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             logging.info(f"Creating new session for context {context_id}.")
             session = await runner.session_service.create_session(
                 app_name=runner.app_name,
-                user_id="user",
+                user_id=user_id,
                 # Don't pass session_id - let Vertex AI generate a valid one
             )
 
         return session
+
 
     def _extract_answer(self, event) -> str:
         """Extract text answer from agent response."""

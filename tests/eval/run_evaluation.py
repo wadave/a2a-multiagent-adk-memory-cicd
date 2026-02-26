@@ -99,10 +99,26 @@ def evaluate_example(example: Dict, config: Dict) -> Dict:
     Returns:
         Evaluation results
     """
+    # Handle different example formats
+    example_id = example.get("id") or example.get("eval_id", "unknown")
+    category = example.get("category", "unknown")
+    
+    # Extract input from 'input' or 'conversation'
+    user_input = example.get("input", "")
+    if not user_input and "conversation" in example:
+        # Try to extract from the first turn of conversation
+        conv = example["conversation"]
+        if conv and isinstance(conv, list):
+            first_turn = conv[0]
+            user_content = first_turn.get("user_content", {})
+            parts = user_content.get("parts", [])
+            if parts and isinstance(parts, list):
+                user_input = " ".join([p.get("text", "") for p in parts if "text" in p])
+
     result = {
-        "example_id": example.get("id", "unknown"),
-        "category": example.get("category", "unknown"),
-        "input": example.get("input", ""),
+        "example_id": example_id,
+        "category": category,
+        "input": user_input,
         "passed": False,
         "scores": {},
         "notes": [],
@@ -114,8 +130,10 @@ def evaluate_example(example: Dict, config: Dict) -> Dict:
     # 3. Calculate scores based on rubrics
 
     # For this template, we'll use mock scores
+    expected_terms = example.get("expected_response_contains", [])
+    terms_str = ", ".join(expected_terms) if expected_terms else "Item 1, Item 2"
     mock_response = (
-        "Mock agent response with **formatted** content:\n- Item 1\n- Item 2"
+        f"Mock agent response with **formatted** content including: {terms_str}\n- {terms_str}"
     )
 
     scores = calculate_rubric_score(example, mock_response)
@@ -181,7 +199,8 @@ def main():
 
     # Run evaluation
     results = []
-    examples = evalset.get("examples", [])
+    # Support both 'examples' and 'eval_cases' keys
+    examples = evalset.get("examples") or evalset.get("eval_cases", [])
 
     for i, example in enumerate(examples, 1):
         logger.info(f"Evaluating example {i}/{len(examples)}: {example.get('id')}")

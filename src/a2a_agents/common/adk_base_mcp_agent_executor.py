@@ -38,6 +38,10 @@ from google.auth.transport import requests as google_auth_requests
 from google.genai import types
 from google.oauth2 import id_token as google_id_token
 
+from a2a_agents.common.agent_configs import DEFAULT_MODEL
+from a2a_agents.common.logging_utils import setup_cloud_logging
+
+
 
 def get_gcp_auth_headers(audience: str) -> Dict[str, str]:
     """
@@ -224,6 +228,9 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         self.project_id = os.environ.get("PROJECT_ID")
         self.location = os.environ.get("LOCATION")
 
+        # Setup Cloud Logging
+        setup_cloud_logging(log_name=self.get_agent_config().get("name"))
+
         if self.agent_engine_id is None:
             # Check environment variable first (may be set on Vertex AI or during deploy)
             self.agent_engine_id = os.environ.get("AGENT_ENGINE_ID")
@@ -270,8 +277,9 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                         "generation_config": {
                             "model": (
                                 f"projects/{self.project_id}/locations/{self.location}/"
-                                "publishers/google/models/gemini-2.5-flash"
+                                f"publishers/google/models/{DEFAULT_MODEL}"
                             )
+
                         }
                     }
                 }
@@ -369,7 +377,8 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
 
             # Create the actual agent
             self.agent = LlmAgent(
-                model=config.get("model", "gemini-2.5-flash"),
+                model=config.get("model", DEFAULT_MODEL),
+
                 name=config["name"],
                 description=config["description"],
                 instruction=config["instruction"],
@@ -431,12 +440,16 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         # Mark task as working (processing)
         await updater.start_work()
 
+        # Resolve user ID dynamically from request headers if available
+        user_id = self._get_user_id(context)
+        logging.info(f"Resolved user_id: {user_id}")
+
         # Refresh MCP authentication headers before executing
         self._refresh_mcp_auth()
 
         try:
             # Get or create a session for this conversation
-            session = await self._get_or_create_session(context.context_id)
+            session = await self._get_or_create_session(context.context_id, user_id=user_id)
             logging.info(f"Using session: {session.id}")
 
             # Prepare the user message in ADK format
@@ -453,7 +466,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
 
             async for event in runner.run_async(
                 session_id=session.id,
-                user_id="user",  # In production, use actual user ID
+                user_id=user_id,
                 new_message=content,
             ):
                 # The agent may produce multiple events
@@ -504,7 +517,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                         tool._connection_params.headers = fresh_headers
                         logging.debug("Refreshed MCP authentication headers")
 
-    async def _get_or_create_session(self, context_id: str):
+    async def _get_or_create_session(self, context_id: str, user_id: str = "user"):
         """Get existing session or create new one."""
         runner = self.runner
         if runner is None:
@@ -512,16 +525,38 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
 
         # For Vertex AI Session Service, don't pass session_id to get_session
         # Instead, create a new session each time (stateless per A2A context)
-        logging.info(f"Creating new session for context {context_id}.")
+        logging.info(f"Creating new session for context {context_id} for user {user_id}.")
         session = await runner.session_service.create_session(
             app_name=runner.app_name,
-            user_id="user",
+            user_id=user_id,
             # Don't pass session_id - let Vertex AI generate a valid one
         )
 
         return session
 
+    def _get_user_id(self, context: RequestContext) -> str:
+        """Extracts the user ID from the request context headers."""
+        # Try common headers for Cloud Run / IAP / OIDC proxy
+        headers = getattr(context, "headers", {})
+        if not headers:
+            # Check if it's available as an attribute directly (A2A implementation detail)
+            headers = getattr(context, "_headers", {})
+
+        user_email = headers.get("x-goog-authenticated-user-email")
+        if user_email:
+            # Format usually is "accounts.google.com:user@gmail.com"
+            if ":" in user_email:
+                return user_email.split(":")[-1]
+            return user_email
+        
+        user_id = headers.get("x-goog-authenticated-user-id")
+        if user_id:
+            return user_id
+            
+        return "user"  # Fallback to default if not authenticated or not provided
+
     def _extract_answer(self, event) -> str:
+
         """Extract text answer from agent response."""
         parts = event.content.parts
         text_parts = [part.text for part in parts if part.text]

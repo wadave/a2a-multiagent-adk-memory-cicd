@@ -20,6 +20,8 @@ Each configuration defines the agent's name, description, instruction, and MCP s
 
 from typing import Dict
 
+DEFAULT_MODEL = "gemini-2.0-flash"
+
 COCKTAIL_AGENT_CONFIG: Dict = {
     "name": "cocktail_agent",
     "description": "An agent that can help questions about cocktail",
@@ -32,7 +34,7 @@ COCKTAIL_AGENT_CONFIG: Dict = {
         "information. Ensure that all responses include the detailed output from "
         "the tools used and are formatted in Markdown"
     ),
-    "model": "gemini-2.5-flash",
+    "model": DEFAULT_MODEL,
     "mcp_url_env_var": "CT_MCP_SERVER_URL",
 }
 
@@ -48,6 +50,6 @@ WEATHER_AGENT_CONFIG: Dict = {
         "information.Ensure that all responses include the detailed output from "
         "the tools used and are formatted in Markdown"
     ),
-    "model": "gemini-2.5-flash",
+    "model": DEFAULT_MODEL,
     "mcp_url_env_var": "WEA_MCP_SERVER_URL",
 }

@@ -13,16 +13,36 @@
 # limitations under the License.
 # Author: Dave Wang
 
+import logging
+import os
 from typing import Any, Dict, Optional
 import httpx
 from fastmcp import FastMCP
 import asyncio
 
+from contextlib import asynccontextmanager
+
+# Setup logging - name matches server name
+logger = logging.getLogger("cocktail-mcp-server")
+
+
+# --- Lifespan Management ---
+@asynccontextmanager
+async def server_lifespan(server: FastMCP):
+    """Gracefully manage server lifecycle."""
+    try:
+        yield
+    finally:
+        # Shutdown logic
+        logger.info("Shutting down cocktail MCP server...")
+        await http_client.aclose()
+
+
 # Initialize FastMCP server
-mcp = FastMCP("cocktail MCP server")
+mcp = FastMCP("cocktail MCP server", lifespan=server_lifespan)
 
 # Constants
-API_BASE_URL = "https://www.thecocktaildb.com/api/json/v1/1/"
+API_BASE_URL = os.getenv("COCKTAIL_DB_API_URL", "https://www.thecocktaildb.com/api/json/v1/1/")
 
 http_client = httpx.AsyncClient(base_url=API_BASE_URL, timeout=30.0)
 
@@ -45,16 +65,16 @@ async def make_cocktaildb_request(
             return None
 
         # Handle cases where the primary key (drinks/ingredients) might be null
-        if data and (data.get("drinks") is None and data.get("ingredients") is None):
+        if isinstance(data, dict) and (data.get("drinks") is None and data.get("ingredients") is None):
             if "drinks" in data or "ingredients" in data:
                 return None  # Explicitly no results found based on API structure
         return data
 
     except httpx.HTTPStatusError as e:
-        print(f"HTTP error occurred: {e}")
+        logger.error(f"HTTP error occurred: {e}")
         return None
     except httpx.RequestError as e:
-        print(f"An error occurred while requesting {endpoint!r}: {e}")
+        logger.error(f"An error occurred while requesting {endpoint!r}: {e}")
         return None
 
 
@@ -125,6 +145,7 @@ async def search_cocktail_by_name(name: str) -> str:
     Args:
         name: The name of the cocktail to search for (e.g., margarita).
     """
+    logger.info(f"Tool called: search_cocktail_by_name(name='{name}')")
     data = await make_cocktaildb_request("search.php", params={"s": name})
     if data and data.get("drinks"):
         drinks = data["drinks"]
@@ -141,6 +162,7 @@ async def list_cocktails_by_first_letter(letter: str) -> str:
     Args:
         letter: The first letter to search cocktails by (must be a single character).
     """
+    logger.info(f"Tool called: list_cocktails_by_first_letter(letter='{letter}')")
     if len(letter) != 1 or not letter.isalpha():
         return "Invalid input: Please provide a single letter."
     data = await make_cocktaildb_request("search.php", params={"f": letter.lower()})
@@ -159,6 +181,7 @@ async def search_ingredient_by_name(name: str) -> str:
     Args:
         name: The name of the ingredient to search for (e.g., vodka).
     """
+    logger.info(f"Tool called: search_ingredient_by_name(name='{name}')")
     data = await make_cocktaildb_request("search.php", params={"i": name})
     if data and data.get("ingredients"):
         ingredient = data["ingredients"][0]  # API returns a list with one item
@@ -169,6 +192,7 @@ async def search_ingredient_by_name(name: str) -> str:
 @mcp.tool()
 async def list_random_cocktails() -> str:
     """Looks up a single random cocktail."""
+    logger.info("Tool called: list_random_cocktails()")
     data = await make_cocktaildb_request("random.php")
     if data and data.get("drinks"):
         drink = data["drinks"][0]
@@ -183,6 +207,7 @@ async def lookup_cocktail_details_by_id(cocktail_id: str) -> str:
     Args:
         cocktail_id: The unique ID of the cocktail.
     """
+    logger.info(f"Tool called: lookup_cocktail_details_by_id(cocktail_id='{cocktail_id}')")
     # Validate if cocktail_id is numeric
     if not cocktail_id.isdigit():
         return "Invalid input: Cocktail ID must be a number."
@@ -194,13 +219,10 @@ async def lookup_cocktail_details_by_id(cocktail_id: str) -> str:
     return f"No cocktail found with ID {cocktail_id}."
 
 
-# --- Add shutdown event to close client (like weather server) ---
-async def shutdown_event():
-    """Gracefully close the shared httpx client."""
-    await http_client.aclose()
+# --- Run Server ---
 
 
 # --- Run Server ---
 if __name__ == "__main__":
-    # This now works because asyncio is imported
+    logger.info("Starting cocktail MCP server on port 8080...")
     asyncio.run(mcp.run_async(transport="streamable-http", host="0.0.0.0", port=8080))

@@ -53,14 +53,13 @@ class TestCocktailAgentCard:
     def test_cocktail_agent_card_structure(self):
         """Verify cocktail agent card is properly structured."""
         assert isinstance(cocktail_agent_card, AgentCard)
-        assert cocktail_agent_card.name == "Cocktail Agent adk-mb - ADK"
+        assert cocktail_agent_card.name == "Cocktail Agent ADK-MB"
         assert len(cocktail_agent_card.skills) == 1
         assert cocktail_agent_card.skills[0] == cocktail_agent_skill
 
     def test_cocktail_agent_card_naming(self):
         """Verify cocktail agent uses adk-mb naming convention."""
-        assert "adk-mb" in cocktail_agent_card.name
-        assert "ADK" in cocktail_agent_card.name
+        assert "ADK-MB" in cocktail_agent_card.name
 
 
 class TestWeatherAgentCard:
@@ -82,14 +81,13 @@ class TestWeatherAgentCard:
     def test_weather_agent_card_structure(self):
         """Verify weather agent card is properly structured."""
         assert isinstance(weather_agent_card, AgentCard)
-        assert weather_agent_card.name == "Weather Agent adk-mb - ADK"
+        assert weather_agent_card.name == "Weather Agent ADK-MB"
         assert len(weather_agent_card.skills) == 1
         assert weather_agent_card.skills[0] == weather_agent_skill
 
     def test_weather_agent_card_naming(self):
         """Verify weather agent uses adk-mb naming convention."""
-        assert "adk-mb" in weather_agent_card.name
-        assert "ADK" in weather_agent_card.name
+        assert "ADK-MB" in weather_agent_card.name
 
 
 class TestHostingAgentCard:
@@ -112,14 +110,13 @@ class TestHostingAgentCard:
     def test_hosting_agent_card_structure(self):
         """Verify hosting agent card is properly structured."""
         assert isinstance(hosting_agent_card, AgentCard)
-        assert hosting_agent_card.name == "Hosting Agent adk-mb - ADK"
+        assert hosting_agent_card.name == "Hosting Agent ADK-MB"
         assert len(hosting_agent_card.skills) == 1
         assert hosting_agent_card.skills[0] == hosting_agent_skill
 
     def test_hosting_agent_card_naming(self):
         """Verify hosting agent uses adk-mb naming convention."""
-        assert "adk-mb" in hosting_agent_card.name
-        assert "ADK" in hosting_agent_card.name
+        assert "ADK-MB" in hosting_agent_card.name
 
     def test_hosting_agent_description(self):
         """Verify hosting agent description mentions capabilities."""
@@ -134,8 +131,7 @@ class TestAgentCardConsistency:
         """Verify all agents use consistent adk-mb naming."""
         cards = [cocktail_agent_card, weather_agent_card, hosting_agent_card]
         for card in cards:
-            assert "adk-mb" in card.name
-            assert "ADK" in card.name
+            assert "ADK-MB" in card.name.upper()
 
     def test_all_skills_have_examples(self):
         """Verify all skills provide examples."""
