@@ -23,23 +23,41 @@ The system follows a **Host/Specialist Architecture** pattern.
 
 ### 3.1 High-Level Architecture
 
-The following diagram illustrates the system's core components and their interactions.
+The following diagram illustrates the system's core components and their interactions, highlighting the separation of concerns and the security boundary.
 
 ```mermaid
 graph TD
-    User((User)) --> CustomUI[Gradio Frontend]
-    User((User)) --> GeminiEnt[Gemini Enterprise]
-    CustomUI --> Orchestrator[Orchestrator Agent - A2A Host]
-    GeminiEnt --> Orchestrator[Orchestrator Agent - A2A Host]
-    Orchestrator --> MemoryBank[(Vertex AI Memory Bank)]
-    Orchestrator -- A2A Protocol --> Specialist1[Cocktail Agent - Specialist]
-    Orchestrator -- A2A Protocol --> Specialist2[Weather Agent - Specialist]
-
-    Specialist1 -- MCP/SSE --> MCPServer1[Cocktail MCP Server]
-    Specialist2 -- MCP/SSE --> MCPServer2[Weather MCP Server]
-
-    MCPServer1 --> CocktailAPI[TheCocktailDB API]
-    MCPServer2 --> WeatherAPI[National Weather Service API]
+    User((User)) -->|HTTPS| CustomUI[Gradio Frontend]
+    User((User)) -->|OAuth| GeminiEnt[Gemini Enterprise]
+    
+    subgraph "Google Cloud Platform"
+        CustomUI -->|A2A Protocol| Orchestrator[Orchestrator Agent - A2A Host]
+        GeminiEnt -->|A2A Protocol| Orchestrator
+        
+        Orchestrator -->|Internal| MemoryBank[(Vertex AI Memory Bank)]
+        
+        subgraph "Specialist Layer"
+            Orchestrator -->|A2A Protocol| Specialist1[Cocktail Agent]
+            Orchestrator -->|A2A Protocol| Specialist2[Weather Agent]
+        end
+        
+        subgraph "MCP Layer"
+            Specialist1 -->|MCP/SSE| MCPServer1[Cocktail MCP Server]
+            Specialist2 -->|MCP/SSE| MCPServer2[Weather MCP Server]
+        end
+        
+        subgraph "External Integration"
+            MCPServer1 -->|API| CocktailAPI[TheCocktailDB]
+            MCPServer2 -->|API| WeatherAPI[National Weather Service]
+        end
+    end
+    
+    subgraph "Security & Identity"
+        IAM[Google Cloud IAM] -.-> Orchestrator
+        IAM -.-> Specialist1
+        IAM -.-> Specialist2
+        SM[Secret Manager] -.-> CustomUI
+    end
 ```
 
 ### 3.2 Technology Stack
@@ -103,16 +121,30 @@ Persistent context is managed through the Vertex AI Memory Bank.
 
 ### 5.1 Zero-Trust Architecture
 
-- **No Static Keys**: Secrets (API keys, OAuth tokens) are retrieved dynamically from **Google Cloud Secret Manager**.
-- **Least Privilege**: Service accounts are granted only the minimum required IAM permissions (e.g., `roles/aiplatform.user`, `roles/run.invoker`).
-- **WIF Authentication**: CI/CD pipelines use Workload Identity Federation to authenticate with GCP, eliminating the need for long-lived service account keys in GitHub.
+The system is designed with a **Zero-Trust** security posture, assuming no implicit trust between components.
+
+- **Dynamic Secret Retrieval**: Sensitive configuration and API keys are never hardcoded; they are retrieved at runtime from **Google Cloud Secret Manager**.
+- **Least Privilege IAM**: Every component (Frontend, Orchestrator, Specialists, MCP Servers) operates under a dedicated service account with the minimal set of IAM permissions (e.g., `roles/aiplatform.user` for agents, `roles/run.invoker` for internal service calls).
+- **Identity-Based Auth**: All internal service-to-service communication is authenticated using Google OIDC tokens.
+- **Automated Token Management**: Agents utilize a `TokenManager` to dynamically fetch and refresh identity tokens, eliminating the risk of long-lived or hardcoded Bearer tokens.
+- **WIF Authentication**: The CI/CD pipeline uses Workload Identity Federation for secure, keyless authentication between GitHub Actions and Google Cloud.
 
 ### 5.2 Data Protection
 
-- **Communication Security**: All agent-to-agent and agent-to-MCP communication is encrypted via HTTPS.
+- **Communication Security**: All agent-to-agent and agent-to-MCP communication is encrypted via HTTPS/TLS.
 - **Access Control**: The Gradio frontend is restricted to authorized users via Cloud Run IAM configuration.
+- **History Sanitization**: The Git repository has undergone a comprehensive history scrub to remove all legacy tokens and sensitive endpoints, ensuring that no historical data can be exploited.
 
-## 6. Deployment Architecture
+## 6. Observability and Logging
+
+The system implements a centralized logging strategy to provide visibility across all components:
+
+- **Python Native Interface**: All components utilize the standard Python `logging` module for generating log events.
+- **Cloud Integration**: The `setup_cloud_logging` utility (in `logging_utils.py`) integrates the Python root logger with **Google Cloud Logging** (Stackdriver) using the `CloudLoggingHandler`.
+- **Environment Aware**: Cloud Logging is automatically enabled only when the `PROJECT_ID` environment variable is detected, falling back to standard stdout/stderr logging for local development.
+- **Structured Visibility**: Logs include component identifiers (e.g., agent names) as log identifiers, allowing for granular filtering in the Google Cloud Console.
+
+## 7. Deployment Architecture
 
 ### 6.1 Infrastructure as Code (Terraform)
 
@@ -142,4 +174,4 @@ The project employs a multi-tiered testing strategy:
 ## 8. Appendices
 
 - **Source Code**: [GitHub Repository](https://github.com/wadave/a2a-multiagent-adk-memory-cicd)
-- **Reference Docs**: [ADK Documentation](https://cloud.google.com/vertex-ai/docs/generative-ai/agent-dev-kit)
+
