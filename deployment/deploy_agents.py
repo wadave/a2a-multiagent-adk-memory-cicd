@@ -123,7 +123,7 @@ def main():
     load_dotenv()
 
     project_id = os.environ.get("PROJECT_ID")
-    location = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
+    location = os.environ.get("LOCATION") or os.environ.get("GOOGLE_CLOUD_REGION") or "us-central1"
     project_number = os.environ.get("PROJECT_NUMBER")
     google_genai_model = os.environ.get("GOOGLE_GENAI_MODEL", "gemini-2.5-flash")
     bucket_name = os.environ.get("BUCKET_NAME", f"{project_id}-bucket")

@@ -302,10 +302,7 @@ Current agent: {current_agent["active_agent"]} """
             tool_context.actions.skip_summarization = True
             tool_context.actions.escalate = True
         elif task.status.state == TaskState.canceled:
-            return types.Content(
-                role=Role.assistant,
-                parts=[types.Part(text=f"Agent {agent_name} task was canceled.")]
-            )
+            return ["Agent " + agent_name + " task was canceled."]
 
         elif task.status.state == TaskState.failed:
             # Raise error for failure
@@ -364,7 +361,7 @@ async def convert_part(part: Part, tool_context: ToolContext) -> str | DataPart 
         tool_context.actions.skip_summarization = True
         tool_context.actions.escalate = True
         return DataPart(data={"artifact-file-id": file_id})
-    return f"Unknown type: {part.kind}"
+    return f"Unknown type: {part.root.kind}"
 
 
 async def get_orchestrator_agent(

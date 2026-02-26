@@ -20,7 +20,7 @@ Each configuration defines the agent's name, description, instruction, and MCP s
 
 from typing import Dict
 
-DEFAULT_MODEL = "gemini-2.0-flash"
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 COCKTAIL_AGENT_CONFIG: Dict = {
     "name": "cocktail_agent",
