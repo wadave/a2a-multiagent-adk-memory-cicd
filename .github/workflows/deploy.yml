@@ -5,6 +5,9 @@ on:
     branches:
       - staging
       - main
+    paths-ignore:
+      - '**.md'
+      - 'assets/**'
 
 env:
   REGION: us-central1
