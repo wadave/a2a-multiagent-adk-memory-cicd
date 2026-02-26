@@ -20,7 +20,42 @@ This web application demonstrates the integration of Google's open-source framew
 
 The application demonstrates a multi-agent orchestration pattern using Google's **Agent2Agent (A2A)** and **Agent Development Kit (ADK)** frameworks. This architecture enables secure, modular communication between a central host and specialized remote agents.
 
-![architecture](assets/a2a-ae.jpeg)
+```mermaid
+graph TD
+    User((User)) -->|HTTPS| CustomUI[Gradio Frontend]
+    User((User)) -->|OAuth| GeminiEnt[Gemini Enterprise]
+    
+    subgraph "Google Cloud Platform"
+        CustomUI -->|A2A Protocol| Orchestrator[Orchestrator Agent - A2A Host]
+        GeminiEnt -->|A2A Protocol| Orchestrator
+        
+        Orchestrator -->|Internal| MemoryBank[(Vertex AI Memory Bank)]
+        
+        subgraph "Specialist Layer"
+            Orchestrator -->|A2A Protocol| Specialist1[Cocktail Agent]
+            Orchestrator -->|A2A Protocol| Specialist2[Weather Agent]
+        end
+        
+        subgraph "MCP Layer"
+            Specialist1 -->|MCP/SSE| MCPServer1[Cocktail MCP Server]
+            Specialist2 -->|MCP/SSE| MCPServer2[Weather MCP Server]
+        end
+        
+        subgraph "External Integration"
+            MCPServer1 -->|API| CocktailAPI[TheCocktailDB]
+            MCPServer2 -->|API| WeatherAPI[National Weather Service]
+        end
+    end
+    
+    subgraph "Security & Identity"
+        IAM[Google Cloud IAM] -.-> Orchestrator
+        IAM -.-> Specialist1
+        IAM -.-> Specialist2
+        SM[Secret Manager] -.-> CustomUI
+    end
+```
+
+![architecture](assets/a2a-ae.png)
 
 #### 1. Entry Point: Frontend
 The system supports two parallel entry point options for user interaction:
@@ -47,11 +82,13 @@ Agents retrieve real-time information through **Model Context Protocol (MCP)** s
 
 ## Security
 
-The application implements a multi-layered security strategy for different components:
+The application implements a multi-layered, **Zero-Trust** security strategy:
 
+- **Identity-Based Auth**: Utilizes **Google Cloud IAM** and **Service Accounts** for all internal service-to-service communication.
+- **Automatic Token Management**: Agents use a `TokenManager` to dynamically fetch and refresh Google OIDC tokens for MCP server authentication, avoiding any hardcoded Bearer tokens.
 - **Gemini Enterprise UI**: Utilizes **OAuth** for secure user authentication and access control.
-- **Service Authentication**: Other services, including specialized agents and MCP servers, utilize **Google Cloud IAM** and **Service Accounts** for secure, programmatic authentication.
-- **Credential Management**: Sensitive credentials, such as Github tokens and OAuth secrets, are stored and managed using **Google Cloud Secret Manager** to ensure they are never exposed in the codebase or logs.
+- **Credential Management**: Sensitive credentials, such as Github tokens and OAuth secrets, are stored and managed using **Google Cloud Secret Manager**.
+- **Secure History**: The Git history is sanitized to ensure no sensitive tokens or endpoints are exposed in previous commits.
 
 ## Observability
 
