@@ -1,4 +1,4 @@
-# Copyright 2025 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -303,6 +303,27 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
 
         return session
 
+
+    def _get_user_id(self, context: RequestContext) -> str:
+        """Extracts the user ID from the request context headers."""
+        # Try common headers for Cloud Run / IAP / OIDC proxy
+        headers = getattr(context, "headers", {})
+        if not headers:
+            # Check if it's available as an attribute directly (A2A implementation detail)
+            headers = getattr(context, "_headers", {})
+
+        user_email = headers.get("x-goog-authenticated-user-email")
+        if user_email:
+            # Format usually is "accounts.google.com:user@gmail.com"
+            if ":" in user_email:
+                return user_email.split(":")[-1]
+            return user_email
+        
+        user_id = headers.get("x-goog-authenticated-user-id")
+        if user_id:
+            return user_id
+            
+        return "user"  # Fallback to default if not authenticated or not provided
 
     def _extract_answer(self, event) -> str:
         """Extract text answer from agent response."""
