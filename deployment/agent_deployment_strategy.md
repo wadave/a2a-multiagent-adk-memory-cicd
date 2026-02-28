@@ -28,6 +28,13 @@ The Reasoning Engine API has specific quirks, such as sometimes ignoring initial
 - **Python SDK:** A custom Python script grants us the imperative logic needed to immediately patch or `update()` the resource right after creation to enforce specific configurations and handle backend quirks gracefully (as seen in our `deploy_agents.py`).
 - **Terraform:** Terraform's declarative nature makes it difficult to implement imperative "patching" logic. If a resource requires a two-step creation and update process due to API constraints, Terraform often struggles or requires complex lifecycle blocks that are challenging to maintain.
 
+### 4. Lifecycle Management and Destruction (The Trade-off)
+
+There is one notable trade-off when using the Python SDK over Terraform: **state management**.
+- Because the Agent Engines are created via a Python script, they are **not** tracked in your `terraform.tfstate` file.
+- If you run `terraform destroy`, Terraform will destroy the underlying infrastructure (like the staging GCS buckets, Cloud Run MCP services, and Service Accounts), but it **will not** delete the Agent Engines themselves from Vertex AI.
+- This leaves the Agent Engines "orphaned" in the Google Cloud Console (they will still exist but will be broken because their underlying buckets and permissions are gone). To fully clean up an environment, the Agent Engines must be deleted manually via the console or via a separate teardown Python script.
+
 ## Summary
 
 Terraform is excellent for provisioning foundational infrastructure (like the underlying GCS buckets, IAM roles, Secret Manager, or enabling APIs like Model Armor). However, because deploying a Reasoning Engine fundamentally involves **application packaging, serialization, and dynamic dependency injection**, an imperative Python script executed via the CI/CD pipeline provides a vastly superior, less error-prone developer experience.
