@@ -15,6 +15,8 @@ This web application demonstrates the integration of Google's open-source framew
 - **Cloud Logging**: Integrated Google Cloud Logging for unified observability across all agents
 - **CI/CD Pipeline**: Automated deployment using GitHub Actions and Terraform
 - **Performance Optimization**: Shared HTTP client pooling and metadata caching for reduced latency
+- **Resiliency**: Custom Circuit Breaker for robust external communication
+- **Threat Protection**: Google Cloud Model Armor integration for Vertex AI LLM calls
 
 ### Architecture
 
@@ -85,6 +87,7 @@ Agents retrieve real-time information through **Model Context Protocol (MCP)** s
 The application implements a multi-layered, **Zero-Trust** security strategy:
 
 - **Identity-Based Auth**: Utilizes **Google Cloud IAM** and **Service Accounts** for all internal service-to-service communication.
+- **Model Armor**: Enforces project-wide floor settings automatically to inspect and block malicious or inappropriate prompts and LLM responses at the Vertex AI API layer (`INSPECT_AND_BLOCK`).
 - **Automatic Token Management**: Agents use a `TokenManager` to dynamically fetch and refresh Google OIDC tokens for MCP server authentication, avoiding any hardcoded Bearer tokens.
 - **Gemini Enterprise UI**: Utilizes **OAuth** for secure user authentication and access control.
 - **Credential Management**: Sensitive credentials, such as Github tokens and OAuth secrets, are stored and managed using **Google Cloud Secret Manager**.
@@ -102,7 +105,7 @@ The application uses **Google Cloud Logging** to provide structured, centralized
 
 The application implements several optimization patterns to ensure high performance and efficient resource utilization:
 
-- **HTTP Client Reuse**: Both the Gradio frontend and the Orchestrator use a shared `httpx.AsyncClient` singleton. This enables **connection pooling**, reducing the overhead of establishing new TCP/TLS connections for every request.
+- **HTTP Client Reuse & Circuit Breaker**: Both the Gradio frontend and the Orchestrator use a shared `httpx.AsyncClient` singleton wrapped with a custom `aiobreaker` transport. This provides **connection pooling** to reduce TLS handshake overhead, limits timeouts strictly to 60 seconds, and applies the **Circuit Breaker** pattern to gracefully fail fast if a downstream MCP server becomes unresponsive.
 - **Metadata Caching**: The frontend caches the `agent_card` metadata (retrieved from Vertex AI) to avoid redundant API calls during the session.
 - **Graceful Lifespan Management**: MCP servers use the `lifespan` context manager to handle startup and shutdown logic. This ensures that resources like HTTP clients are properly closed when the server stops, preventing memory leaks and orphaned connections.
 

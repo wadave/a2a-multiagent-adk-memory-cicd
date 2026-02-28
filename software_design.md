@@ -17,7 +17,8 @@ The system follows a **Host/Specialist Architecture** pattern.
 - **The Host (Orchestrator)** acts as the primary interface for the user, decomposing complex requests and routing tasks to the appropriate specialist agents via the A2A protocol.
 - **Specialist Agents** are fine-tuned for specific domains (Weather, Cocktails) and utilize the Model Context Protocol (MCP) to interact with external data sources.
 - **Persistent Memory** is achieved through integration with the Vertex AI Memory Bank, which stores and retrieves semantic context across sessions.
-- **Resource Management**: Efficient connection pooling and metadata caching are implemented to minimize latency and resource consumption.
+- **Resource Management & Resiliency**: Efficient connection pooling, metadata caching, and an HTTP Circuit Breaker are implemented to minimize latency and prevent cascading failures.
+- **Security & Threat Protection**: End-to-end security via IAM and Google Cloud Model Armor floor settings to proactively filter out malicious LLM prompts and responses.
 
 ## 3. Architectural Design
 
@@ -64,13 +65,13 @@ graph TD
 
 | Component         | Technology                                         |
 | :---------------- | :------------------------------------------------- |
-| **Language**      | Python 3.10+                                       |
+| **Language**      | Python 3.10+, `aiobreaker` for resiliency          |
 | **AI Framework**  | Google Agent Development Kit (ADK)                 |
 | **Protocols**     | A2A (Agent-to-Agent), MCP (Model Context Protocol) |
 | **Communication** | SSE (Server-Sent Events) for MCP, JSON-RPC for A2A |
 | **Compute**       | Google Cloud Run, Vertex AI Reasoning Engine       |
 | **Storage**       | Vertex AI Memory Bank                              |
-| **Security**      | IAM, Workload Identity Federation, Secret Manager  |
+| **Security**      | IAM, WIF, Secret Manager, Cloud Model Armor        |
 | **CI/CD**         | GitHub Actions, Terraform                          |
 | **UI**            | Gradio                                             |
 
@@ -102,11 +103,12 @@ The MCP servers are built using `FastMCP` and exposed as Cloud Run services.
 - **Statelessness**: Servers are designed to be stateless, processing individual tool calls with minimal overhead.
 - **Lifecycle Management**: Implemented using `FastMCP(lifespan=...)` to ensure `httpx.AsyncClient` is gracefully closed upon server shutdown.
 
-### 4.4 Performance Optimization
+### 4.4 Performance & Resiliency Optimization
 
 The system employs several patterns to optimize throughput and reduce latency:
 
-- **Connection Pooling**: A shared `httpx.AsyncClient` is used across the frontend and orchestrator. This allows for persistent TCP connections, avoiding the frequent overhead of TLS handshakes for internal and external API calls.
+- **Connection Pooling & Circuit Breaker**: A shared `httpx.AsyncClient` is used across the frontend and orchestrator. This allows for persistent TCP connections to avoid frequent TLS handshakes. It is wrapped in a custom `aiobreaker` transport layer acting as a **Circuit Breaker**. This fails fast if downstream MCP servers are unresponsive, protecting the orchestrator from stalling.
+- **Strict Timeouts**: The shared HTTP client uniformly enforces a 60-second timeout.
 - **Metadata Caching**: The frontend implements a memory cache for the `agent_card` metadata retrieved from Vertex AI. This prevents multiple redundant network round-trips to the Vertex AI Control Plane for static agent definitions.
 - **Async I/O Efficiency**: All network interactions (A2A, MCP, and external APIs) utilize non-blocking `asyncio` patterns, ensuring the host can handle multiple concurrent sessions without thread exhaustion.
 
@@ -134,6 +136,12 @@ The system is designed with a **Zero-Trust** security posture, assuming no impli
 - **Communication Security**: All agent-to-agent and agent-to-MCP communication is encrypted via HTTPS/TLS.
 - **Access Control**: The Gradio frontend is restricted to authorized users via Cloud Run IAM configuration.
 - **History Sanitization**: The Git repository has undergone a comprehensive history scrub to remove all legacy tokens and sensitive endpoints, ensuring that no historical data can be exploited.
+
+### 5.3 LLM Threat Protection (Model Armor)
+
+- **Floor Settings Layer**: Google Cloud Model Armor is provisioned universally at the project level as a Floor Setting.
+- **Dynamic Filtering**: Vertex AI API requests are automatically filtered (`INSPECT_AND_BLOCK`).
+- **Policy Scopes**: Includes blocking configurations for jailbreaks, Personal Identifiable Information (PII), malicious URIs, hate speech, dangerous content, sexually explicit references, and harassment. This acts directly inside Google's edge layer before hitting the core language model.
 
 ## 6. Observability and Logging
 

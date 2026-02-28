@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 from typing import NoReturn
 
 import httpx
+from aiobreaker import CircuitBreaker, CircuitBreakerError
 
 # A2A
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -46,13 +47,46 @@ load_dotenv()
 # Global shared HTTP client for the orchestrator
 _shared_httpx_client: httpx.AsyncClient | None = None
 
+# Create a circuit breaker that:
+# 1. Trips open after 3 consecutive failures
+# 2. Stays open for 30 seconds before attempting a test request (half-open)
+llm_api_breaker = CircuitBreaker(fail_max=3, timeout_duration=30)
+
+
+class CircuitBreakerTransport(httpx.AsyncBaseTransport):
+    """Wraps an httpx transport to enforce an aiobreaker circuit breaker."""
+    def __init__(self, underlying: httpx.AsyncBaseTransport):
+        self._underlying = underlying
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        try:
+            @llm_api_breaker
+            async def _make_request():
+                response = await self._underlying.handle_async_request(request)
+                # We want 5xx server errors and network timeouts to count as failures
+                if getattr(response, "status_code", 200) >= 500:
+                    response.raise_for_status()
+                return response
+                
+            return await _make_request()
+        except CircuitBreakerError:
+            logging.warning(f"Circuit Breaker OPEN. Fast-failing request to {request.url}")
+            return httpx.Response(status_code=503, content=b"Circuit Breaker Open", request=request)
+        except httpx.HTTPStatusError as e:
+            # We must return the actual response object to satisfy httpx.AsyncClient
+            return e.response
+
 
 def get_shared_httpx_client() -> httpx.AsyncClient:
-    """Gets or creates a shared httpx.AsyncClient with GoogleAuth."""
+    """Gets or creates a shared httpx.AsyncClient with GoogleAuth and Circuit Breaker."""
     global _shared_httpx_client
     if _shared_httpx_client is None:
+        base_transport = httpx.AsyncHTTPTransport(retries=0)
+        cb_transport = CircuitBreakerTransport(base_transport)
+
         _shared_httpx_client = httpx.AsyncClient(
-            timeout=120,
+            transport=cb_transport,
+            timeout=60.0,
             auth=GoogleAuth(),
         )
         _shared_httpx_client.headers["Content-Type"] = "application/json"
