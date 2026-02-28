@@ -58,6 +58,9 @@ graph TD
         IAM -.-> Specialist1
         IAM -.-> Specialist2
         SM[Secret Manager] -.-> CustomUI
+        MA{Model Armor} -.->|Threat Protection| Orchestrator
+        MA -.->|Threat Protection| Specialist1
+        MA -.->|Threat Protection| Specialist2
     end
 ```
 

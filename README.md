@@ -54,10 +54,13 @@ graph TD
         IAM -.-> Specialist1
         IAM -.-> Specialist2
         SM[Secret Manager] -.-> CustomUI
+        MA{Model Armor} -.->|Threat Protection| Orchestrator
+        MA -.->|Threat Protection| Specialist1
+        MA -.->|Threat Protection| Specialist2
     end
 ```
 
-![architecture](assets/a2a-ae.png)
+![architecture](assets/a2a-ae-armor.png)
 
 #### 1. Entry Point: Frontend
 The system supports two parallel entry point options for user interaction:

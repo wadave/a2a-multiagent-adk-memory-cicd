@@ -70,6 +70,7 @@ def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, p
             "cloudpickle==3.1.2",
             "python-dotenv>=1.2.1",
             "google-cloud-logging>=3.11.0",
+            "aiobreaker>=1.2.0",
         ],
         "http_options": {
             "base_url": f"https://{location}-aiplatform.googleapis.com",
