@@ -39,3 +39,12 @@ resource "google_project_iam_member" "github_runner_modelarmor_admin" {
   role    = "roles/modelarmor.admin"
   member  = "serviceAccount:github-runner@${var.cicd_runner_project_id}.iam.gserviceaccount.com"
 }
+
+# Grant the CI/CD service account token accessor to fetch source from Developer Connect / Cloud Build Connections
+resource "google_project_iam_member" "github_runner_token_accessor" {
+  for_each = toset(values(local.deploy_project_ids))
+
+  project = each.value
+  role    = "roles/cloudbuild.readTokenAccessor"
+  member  = "serviceAccount:github-runner@${var.cicd_runner_project_id}.iam.gserviceaccount.com"
+}
