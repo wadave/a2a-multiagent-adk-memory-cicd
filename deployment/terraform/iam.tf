@@ -33,7 +33,7 @@ resource "google_cloud_run_v2_service_iam_member" "frontend_invoker" {
 
 # Grant the CI/CD service account Model Armor Admin to manage floor settings
 resource "google_project_iam_member" "github_runner_modelarmor_admin" {
-  for_each = local.deploy_project_ids
+  for_each = toset(values(local.deploy_project_ids))
 
   project = each.value
   role    = "roles/modelarmor.admin"

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 resource "google_project_service" "modelarmor_api" {
-  for_each           = local.deploy_project_ids
+  for_each           = toset(values(local.deploy_project_ids))
   project            = each.value
   service            = "modelarmor.googleapis.com"
   disable_on_destroy = false
@@ -28,7 +28,7 @@ resource "time_sleep" "wait_for_modelarmor_admin_iam" {
 }
 
 resource "null_resource" "model_armor_floor_settings" {
-  for_each = local.deploy_project_ids
+  for_each = toset(values(local.deploy_project_ids))
 
   provisioner "local-exec" {
     command = <<EOT
@@ -42,7 +42,8 @@ resource "null_resource" "model_armor_floor_settings" {
         --pi-and-jailbreak-filter-settings-confidence-level=low-and-above \
         --malicious-uri-filter-settings-enforcement=ENABLED \
         --rai-settings-filters="confidenceLevel=LOW_AND_ABOVE,filterType=HATE_SPEECH","confidenceLevel=LOW_AND_ABOVE,filterType=DANGEROUS","confidenceLevel=LOW_AND_ABOVE,filterType=SEXUALLY_EXPLICIT","confidenceLevel=LOW_AND_ABOVE,filterType=HARASSMENT" \
-        --project=${each.value}
+        --project=${each.value} \
+        --billing-project=${each.value}
     EOT
   }
 
