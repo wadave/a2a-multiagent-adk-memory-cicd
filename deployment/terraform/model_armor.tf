@@ -29,18 +29,27 @@ resource "time_sleep" "wait_for_modelarmor_admin_iam" {
 resource "null_resource" "model_armor_floor_settings" {
   provisioner "local-exec" {
     command = <<EOT
-      gcloud model-armor floorsettings update \
-        --full-uri=projects/${var.deploy_project_id}/locations/global/floorSetting \
-        --enable-floor-setting-enforcement=TRUE \
-        --add-integrated-services=VERTEX_AI \
-        --vertex-ai-enforcement-type=INSPECT_AND_BLOCK \
-        --enable-vertex-ai-cloud-logging \
-        --pi-and-jailbreak-filter-settings-enforcement=enable \
-        --pi-and-jailbreak-filter-settings-confidence-level=low-and-above \
-        --malicious-uri-filter-settings-enforcement=ENABLED \
-        --rai-settings-filters="confidenceLevel=LOW_AND_ABOVE,filterType=HATE_SPEECH","confidenceLevel=LOW_AND_ABOVE,filterType=DANGEROUS","confidenceLevel=LOW_AND_ABOVE,filterType=SEXUALLY_EXPLICIT","confidenceLevel=LOW_AND_ABOVE,filterType=HARASSMENT" \
-        --project=${var.deploy_project_id} \
-        --billing-project=${var.deploy_project_id}
+      for i in {1..12}; do
+        if gcloud model-armor floorsettings update \
+          --full-uri=projects/${var.deploy_project_id}/locations/global/floorSetting \
+          --enable-floor-setting-enforcement=TRUE \
+          --add-integrated-services=VERTEX_AI \
+          --vertex-ai-enforcement-type=INSPECT_AND_BLOCK \
+          --enable-vertex-ai-cloud-logging \
+          --pi-and-jailbreak-filter-settings-enforcement=enable \
+          --pi-and-jailbreak-filter-settings-confidence-level=low-and-above \
+          --malicious-uri-filter-settings-enforcement=ENABLED \
+          --rai-settings-filters="confidenceLevel=LOW_AND_ABOVE,filterType=HATE_SPEECH","confidenceLevel=LOW_AND_ABOVE,filterType=DANGEROUS","confidenceLevel=LOW_AND_ABOVE,filterType=SEXUALLY_EXPLICIT","confidenceLevel=LOW_AND_ABOVE,filterType=HARASSMENT" \
+          --project=${var.deploy_project_id} \
+          --billing-project=${var.deploy_project_id}; then
+          echo "Successfully updated floor settings"
+          exit 0
+        fi
+        echo "Waiting for IAM permissions to propagate... (Attempt $i/12)"
+        sleep 10
+      done
+      echo "Failed to update floor settings after multiple attempts"
+      exit 1
     EOT
   }
 
