@@ -30,10 +30,10 @@ jobs:
       id-token: 'write'
 
     env:
-      PROJECT_ID: dw-genai-dev
-      PROJECT_NUMBER: '496235138247'
-      WORKLOAD_IDENTITY_PROVIDER: 'projects/496235138247/locations/global/workloadIdentityPools/github/providers/github-actions'
-      SERVICE_ACCOUNT: 'github-runner@dw-genai-dev.iam.gserviceaccount.com'
+      PROJECT_ID: ${{ vars.PROJECT_ID }}
+      PROJECT_NUMBER: ${{ vars.PROJECT_NUMBER }}
+      WORKLOAD_IDENTITY_PROVIDER: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+      SERVICE_ACCOUNT: ${{ vars.SERVICE_ACCOUNT }}
 
     steps:
       - name: Checkout Code
@@ -190,7 +190,7 @@ jobs:
         run: |
           terraform init \
             -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
-            -backend-config="prefix=a2a-multiagent-adk-memory-cicd/staging"
+            -backend-config="prefix=${{ github.event.repository.name }}/staging"
         working-directory: deployment/terraform
 
       - name: Import existing MCP Cloud Run services
@@ -201,8 +201,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=unset" \
             google_cloud_run_v2_service.cocktail_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
@@ -211,8 +211,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=unset" \
             google_cloud_run_v2_service.weather_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
@@ -224,8 +224,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=unset" \
             -target=google_cloud_run_v2_service.cocktail_mcp_server \
             -target=google_cloud_run_v2_service.weather_mcp_server \
@@ -370,8 +370,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             google_cloud_run_v2_service.a2a_frontend \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
@@ -383,8 +383,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             -target=google_cloud_run_v2_service.a2a_frontend \
             -target=google_cloud_run_v2_service_iam_member.frontend_invoker
@@ -399,8 +399,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID }}" \
             -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
             -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
@@ -418,8 +418,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID || steps.agent_id.outputs.AGENT_ENGINE_ID || 'unset' }}" \
             -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
             -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
@@ -456,10 +456,10 @@ jobs:
       id-token: 'write'
 
     env:
-      PROJECT_ID: dw-genai-prod
-      PROJECT_NUMBER: '101916374866'
-      WORKLOAD_IDENTITY_PROVIDER: 'projects/101916374866/locations/global/workloadIdentityPools/github/providers/github-actions'
-      SERVICE_ACCOUNT: 'github-runner@dw-genai-prod.iam.gserviceaccount.com'
+      PROJECT_ID: ${{ vars.PROJECT_ID }}
+      PROJECT_NUMBER: ${{ vars.PROJECT_NUMBER }}
+      WORKLOAD_IDENTITY_PROVIDER: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+      SERVICE_ACCOUNT: ${{ vars.SERVICE_ACCOUNT }}
 
     steps:
       - name: Checkout Code
@@ -633,7 +633,7 @@ jobs:
         run: |
           terraform init \
             -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
-            -backend-config="prefix=a2a-multiagent-adk-memory-cicd/prod"
+            -backend-config="prefix=${{ github.event.repository.name }}/prod"
         working-directory: deployment/terraform
 
       - name: Import existing MCP Cloud Run services
@@ -644,8 +644,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=unset" \
             google_cloud_run_v2_service.cocktail_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
@@ -654,8 +654,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=unset" \
             google_cloud_run_v2_service.weather_mcp_server \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
@@ -667,8 +667,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=unset" \
             -target=google_cloud_run_v2_service.cocktail_mcp_server \
             -target=google_cloud_run_v2_service.weather_mcp_server \
@@ -813,8 +813,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             google_cloud_run_v2_service.a2a_frontend \
             "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
@@ -826,8 +826,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             -target=google_cloud_run_v2_service.a2a_frontend \
             -target=google_cloud_run_v2_service_iam_member.frontend_invoker
@@ -842,8 +842,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID }}" \
             -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
             -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
@@ -861,8 +861,8 @@ jobs:
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=a2a-multiagent-adk-memory-cicd" \
-            -var="repository_owner=wadave" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
             -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID || steps.agent_id.outputs.AGENT_ENGINE_ID || 'unset' }}" \
             -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
             -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \

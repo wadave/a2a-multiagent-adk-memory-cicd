@@ -214,6 +214,8 @@ Pipfile
 *.tfstate
 *.tfstate.*
 *.tfvars
+tfplan
+*.tfplan
 .terraform*
 .terraform/
 
