@@ -33,18 +33,14 @@ resource "google_cloud_run_v2_service_iam_member" "frontend_invoker" {
 
 # Grant the CI/CD service account Model Armor Admin to manage floor settings
 resource "google_project_iam_member" "github_runner_modelarmor_admin" {
-  for_each = toset(values(local.deploy_project_ids))
-
-  project = each.value
+  project = var.deploy_project_id
   role    = "roles/modelarmor.admin"
   member  = "serviceAccount:github-runner@${var.cicd_runner_project_id}.iam.gserviceaccount.com"
 }
 
 # Grant the CI/CD service account token accessor to fetch source from Developer Connect / Cloud Build Connections
 resource "google_project_iam_member" "github_runner_token_accessor" {
-  for_each = toset(values(local.deploy_project_ids))
-
-  project = each.value
+  project = var.deploy_project_id
   role    = "roles/cloudbuild.readTokenAccessor"
   member  = "serviceAccount:github-runner@${var.cicd_runner_project_id}.iam.gserviceaccount.com"
 }

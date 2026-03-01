@@ -13,8 +13,7 @@
 # limitations under the License.
 
 resource "google_project_service" "modelarmor_api" {
-  for_each           = toset(values(local.deploy_project_ids))
-  project            = each.value
+  project            = var.deploy_project_id
   service            = "modelarmor.googleapis.com"
   disable_on_destroy = false
 }
@@ -28,12 +27,10 @@ resource "time_sleep" "wait_for_modelarmor_admin_iam" {
 }
 
 resource "null_resource" "model_armor_floor_settings" {
-  for_each = toset(values(local.deploy_project_ids))
-
   provisioner "local-exec" {
     command = <<EOT
       gcloud model-armor floorsettings update \
-        --full-uri=projects/${each.value}/locations/global/floorSetting \
+        --full-uri=projects/${var.deploy_project_id}/locations/global/floorSetting \
         --enable-floor-setting-enforcement=TRUE \
         --add-integrated-services=VERTEX_AI \
         --vertex-ai-enforcement-type=INSPECT_AND_BLOCK \
@@ -42,8 +39,8 @@ resource "null_resource" "model_armor_floor_settings" {
         --pi-and-jailbreak-filter-settings-confidence-level=low-and-above \
         --malicious-uri-filter-settings-enforcement=ENABLED \
         --rai-settings-filters="confidenceLevel=LOW_AND_ABOVE,filterType=HATE_SPEECH","confidenceLevel=LOW_AND_ABOVE,filterType=DANGEROUS","confidenceLevel=LOW_AND_ABOVE,filterType=SEXUALLY_EXPLICIT","confidenceLevel=LOW_AND_ABOVE,filterType=HARASSMENT" \
-        --project=${each.value} \
-        --billing-project=${each.value}
+        --project=${var.deploy_project_id} \
+        --billing-project=${var.deploy_project_id}
     EOT
   }
 

@@ -1,10 +1,5 @@
-variable "staging_project_id" {
-  description = "GCP project ID for the staging environment"
-  type        = string
-}
-
-variable "prod_project_id" {
-  description = "GCP project ID for the production environment"
+variable "deploy_project_id" {
+  description = "GCP project ID for the target deployment environment"
   type        = string
 }
 
@@ -82,9 +77,3 @@ variable "auth_id" {
   default     = "a2a_adk_mb_oauth_token_v1"
 }
 
-locals {
-  deploy_project_ids = {
-    staging = var.staging_project_id
-    prod    = var.prod_project_id
-  }
-}

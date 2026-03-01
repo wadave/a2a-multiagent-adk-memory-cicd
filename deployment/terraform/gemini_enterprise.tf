@@ -33,7 +33,7 @@ data "google_secret_manager_secret_version" "oauth_client_secret" {
   count    = var.oauth_client_id_secret_name != "" ? 1 : 0
   provider = google
   secret   = var.oauth_client_id_secret_name
-  project  = local.deploy_project_ids["staging"]
+  project  = var.deploy_project_id
 }
 
 # Parse the JSON payload to extract credentials
@@ -46,12 +46,12 @@ locals {
 # Create Gemini Enterprise Authorization
 module "gemini_enterprise_oauth" {
   # Only create if the oauth secrets are provided
-  for_each = var.oauth_client_id_secret_name != "" ? { "staging" = local.deploy_project_ids["staging"] } : {}
-  source   = "./modules/gemini_enterprise_oauth"
+  count  = var.oauth_client_id_secret_name != "" ? 1 : 0
+  source = "./modules/gemini_enterprise_oauth"
 
-  project_id               = each.value
+  project_id               = var.deploy_project_id
   gemini_enterprise_region = var.agents_region
-  authorization_id         = "${each.key}-${local.auth_id}"
+  authorization_id         = "deploy-${local.auth_id}"
   oauth_client_id          = local.oauth_client_id
   oauth_client_secret      = local.oauth_client_secret
   authorization_uri_base   = local.authorization_uri_base
@@ -65,24 +65,25 @@ module "gemini_enterprise_agent_engine_register" {
   depends_on = [
     module.gemini_enterprise_oauth
   ]
-  for_each = (var.ge_app_staging != "" && var.agent_engine_id != "unset" && var.agent_engine_id != "") ? { "staging" = local.deploy_project_ids["staging"] } : {}
-  source   = "./modules/gemini_enterprise_agent_engine_register"
+  count  = (var.ge_app_staging != "" && var.agent_engine_id != "unset" && var.agent_engine_id != "") ? 1 : 0
+  source = "./modules/gemini_enterprise_agent_engine_register"
 
-  project_id               = each.value
+  project_id               = var.deploy_project_id
   agent_engine_region      = var.region
   gemini_enterprise_region = var.agents_region
 
   # Display name matching the agent deployed by deploy_agents.py (hosting_agent_card agent_name)
   agent_display_name = "Hosting Agent ADK-MB"
-  agent_description  = "Hosting agent for ${each.key}"
+  agent_description  = "Hosting agent for deploy"
 
-  gemini_enterprise_agent_name       = "${local.gemini_enterprise_agent_name} (${each.key})"
+  gemini_enterprise_agent_name       = "${local.gemini_enterprise_agent_name} (deploy)"
   gemini_enterprise_tool_description = local.gemini_enterprise_tool_description
 
   # Note: The user needs to provide the app id for staging and prod
-  gemini_enterprise_app_id = each.key == "prod" ? var.ge_app_prod : var.ge_app_staging
+  # Since deploy.yml only provides ge_app_staging to terraform apply, we use it here.
+  gemini_enterprise_app_id = var.ge_app_staging
 
-  authorization_ids = { "AUTH_ID" = "${each.key}-${local.auth_id}" }
+  authorization_ids = { "AUTH_ID" = "deploy-${local.auth_id}" }
 
   agent_engine_id = var.agent_engine_id
 }
