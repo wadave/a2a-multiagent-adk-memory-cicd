@@ -1,34 +1,52 @@
 # CI/CD Setup Guide - GitHub Actions with Google Cloud
 
-This guide provides step-by-step instructions to set up automated CI/CD deployment using GitHub Actions and Workload Identity Federation (WIF) with Google Cloud.
+This guide sets up automated deployment using GitHub Actions and Workload Identity Federation (WIF). Once complete, pushing to `staging` or `main` automatically deploys the application — no service account keys required.
 
-## Overview
+## Setup Checklist
 
-The CI/CD pipeline automatically deploys your application when you push to:
-- `staging` branch → Deploys to staging environment (dw-genai-dev)
-- `main` branch → Deploys to production environment (dw-genai-prod)
+Complete these steps **once** before the first deployment. The pipeline will not work until all required steps are done.
 
-**Authentication Method**: Workload Identity Federation (WIF) - No service account keys needed!
+**Part 1 — Google Cloud (per environment)**
+- [ ] Step 1: Enable required APIs
+- [ ] Step 2: Create `github-runner` service account with required IAM roles
+- [ ] Step 3: Create Workload Identity Pool
+- [ ] Step 4: Create Workload Identity Provider
+- [ ] Step 5: Grant service account access to Workload Identity
+- [ ] Step 6: Note the configuration values
 
-For understanding how WIF authentication works, see [github-actions-wif-auth.md](github-actions-wif-auth.md).
+**Part 2 — GitHub (required before first push)**
+- [ ] Step 7: Set environment variables in GitHub (`staging` and `production`) — ⚠️ pipeline fails without this
+- [ ] Step 8: Add any optional repository secrets
+
+**Part 3 — Deploy**
+- [ ] Step 9: Push to `staging` and verify the pipeline passes
+
+> **Repeat Part 1 for each GCP project** (staging and production use separate projects and separate service accounts).
+
+---
 
 ## Prerequisites
 
-- Google Cloud Project with billing enabled
-- Project Owner or Security Admin role
+- GCP project with billing enabled (one for staging, one for production)
+- Project Owner role on each GCP project
 - GitHub repository with admin access
-- `gcloud` CLI installed and authenticated
+- `gcloud` CLI installed and authenticated (`gcloud auth login`)
+- `gh` CLI installed and authenticated (`gh auth login`)
+
+For background on how WIF authentication works, see [github-actions-wif-auth.md](github-actions-wif-auth.md).
+
+---
 
 ## Part 1: Google Cloud Setup
+
+> Run these steps for **each** GCP project (staging, then production). Set `PROJECT_ID` accordingly each time.
 
 ### Step 1: Enable Required APIs
 
 ```bash
-# Set your project
 export PROJECT_ID="your-project-id"
 export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
 
-# Enable APIs
 gcloud services enable \
   iamcredentials.googleapis.com \
   cloudresourcemanager.googleapis.com \
@@ -37,6 +55,7 @@ gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
   artifactregistry.googleapis.com \
+  modelarmor.googleapis.com \
   --project=$PROJECT_ID
 ```
 
@@ -49,7 +68,7 @@ gcloud iam service-accounts create github-runner \
   --description="Service account for GitHub Actions CI/CD" \
   --project=$PROJECT_ID
 
-# Grant necessary roles
+# Grant roles needed to build and deploy application code
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:github-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/aiplatform.admin"
@@ -73,19 +92,27 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:github-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
+
+# Required for Terraform to enable/disable GCP APIs (google_project_service)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:github-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/serviceusage.serviceUsageAdmin"
+
+# Required for Terraform to manage project-level IAM bindings (google_project_iam_member)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:github-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/resourcemanager.projectIamAdmin"
 ```
 
 ### Step 3: Create Workload Identity Pool
 
 ```bash
-# Create Workload Identity Pool
 gcloud iam workload-identity-pools create github \
   --location="global" \
   --display-name="GitHub Actions Pool" \
   --description="Workload Identity Pool for GitHub Actions" \
   --project=$PROJECT_ID
 
-# Get the pool ID
 export POOL_ID=$(gcloud iam workload-identity-pools describe github \
   --location="global" \
   --project=$PROJECT_ID \
@@ -97,11 +124,9 @@ echo "Pool ID: $POOL_ID"
 ### Step 4: Create Workload Identity Provider
 
 ```bash
-# Set your GitHub repository
-export GITHUB_OWNER="your-github-username"
+export GITHUB_OWNER="your-github-username-or-org"
 export GITHUB_REPO="a2a-multiagent-adk-memory-cicd"
 
-# Create provider
 gcloud iam workload-identity-pools providers create-oidc github-actions \
   --location="global" \
   --workload-identity-pool="github" \
@@ -110,7 +135,6 @@ gcloud iam workload-identity-pools providers create-oidc github-actions \
   --attribute-condition="assertion.repository_owner=='${GITHUB_OWNER}'" \
   --project=$PROJECT_ID
 
-# Get the provider resource name
 export PROVIDER_NAME=$(gcloud iam workload-identity-pools providers describe github-actions \
   --location="global" \
   --workload-identity-pool="github" \
@@ -123,7 +147,6 @@ echo "Provider Name: $PROVIDER_NAME"
 ### Step 5: Grant Service Account Access to Workload Identity
 
 ```bash
-# Allow the GitHub Actions workflow to impersonate the service account
 gcloud iam service-accounts add-iam-policy-binding \
   "github-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/iam.workloadIdentityUser" \
@@ -131,282 +154,230 @@ gcloud iam service-accounts add-iam-policy-binding \
   --project=$PROJECT_ID
 ```
 
-### Step 6: Save Configuration Values
+### Step 6: Note the Configuration Values
 
-Save these values - you'll need them for GitHub configuration:
+Print and save these — you need them in Step 7:
 
 ```bash
-echo "=== Save These Values ==="
-echo "PROJECT_ID: $PROJECT_ID"
-echo "PROJECT_NUMBER: $PROJECT_NUMBER"
-echo "WORKLOAD_IDENTITY_PROVIDER: $PROVIDER_NAME"
-echo "SERVICE_ACCOUNT: github-runner@${PROJECT_ID}.iam.gserviceaccount.com"
-echo "=========================="
+echo "PROJECT_ID:                   $PROJECT_ID"
+echo "PROJECT_NUMBER:               $PROJECT_NUMBER"
+echo "WORKLOAD_IDENTITY_PROVIDER:   $PROVIDER_NAME"
+echo "SERVICE_ACCOUNT:              github-runner@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
+
+---
 
 ## Part 2: GitHub Repository Setup
 
-### Step 7: Configure GitHub Environments
+### Step 7: Set Environment Variables in GitHub
 
-1. Go to your GitHub repository
-2. Navigate to **Settings** → **Environments**
-3. Create two environments:
+> ⚠️ **This step is required before the first push.** The pipeline authenticates to Google Cloud using these variables. If they are missing or empty, the pipeline fails immediately with:
+> `"must specify exactly one of workload_identity_provider or credentials_json"`
 
-#### Staging Environment
-- Name: `staging`
-- Environment protection rules: None (for faster iteration)
-- Environment secrets/variables:
-  - `PROJECT_ID`: `dw-genai-dev` (or your staging project)
-  - `PROJECT_NUMBER`: Your staging project number
-  - `WORKLOAD_IDENTITY_PROVIDER`: From Step 6
-  - `SERVICE_ACCOUNT`: `github-runner@dw-genai-dev.iam.gserviceaccount.com`
+> **Variables vs Secrets**: The pipeline uses `${{ vars.* }}` — these are GitHub Actions **Variables** (non-sensitive config), not Secrets. Set them under **Environment variables**, not Environment secrets.
 
-#### Production Environment
-- Name: `production`
-- Environment protection rules:
-  - ✓ Required reviewers (recommended)
-  - ✓ Wait timer: 5 minutes (optional)
-- Environment secrets/variables:
-  - `PROJECT_ID`: `dw-genai-prod` (or your production project)
-  - `PROJECT_NUMBER`: Your production project number
-  - `WORKLOAD_IDENTITY_PROVIDER`: From Step 6 (production)
-  - `SERVICE_ACCOUNT`: `github-runner@dw-genai-prod.iam.gserviceaccount.com`
+> 💡 `local.tfvars` is for local manual runs only. The pipeline ignores it. To change values the pipeline uses, update the variables here.
+
+Use the `gh` CLI — run once after completing Step 6 for each project (using the same shell session so `$PROVIDER_NAME` etc. are still set):
+
+```bash
+# Set GITHUB_OWNER and GITHUB_REPO if not already set (from Step 4)
+# export GITHUB_OWNER="your-github-username-or-org"
+# export GITHUB_REPO="a2a-multiagent-adk-memory-cicd"
+export GH_FULL_REPO="${GITHUB_OWNER}/${GITHUB_REPO}"
+
+# --- Staging (run after Step 6 with staging PROJECT_ID) ---
+gh variable set PROJECT_ID                 --env staging --body "$PROJECT_ID"      -R $GH_FULL_REPO
+gh variable set PROJECT_NUMBER             --env staging --body "$PROJECT_NUMBER"   -R $GH_FULL_REPO
+gh variable set WORKLOAD_IDENTITY_PROVIDER --env staging --body "$PROVIDER_NAME"   -R $GH_FULL_REPO
+gh variable set SERVICE_ACCOUNT            --env staging \
+  --body "github-runner@${PROJECT_ID}.iam.gserviceaccount.com" -R $GH_FULL_REPO
+
+# Optional: only set if using Gemini Enterprise
+# gh variable set GE_APP_STAGING             --env staging --body "your-ge-app-id"  -R $GH_FULL_REPO
+# gh variable set OAUTH_CLIENT_ID_SECRET_NAME --env staging --body "client_secret"  -R $GH_FULL_REPO
+
+# --- Production (re-run Step 1-6 with prod PROJECT_ID, then run these) ---
+# gh variable set PROJECT_ID                 --env production --body "$PROJECT_ID"    -R $GH_FULL_REPO
+# gh variable set PROJECT_NUMBER             --env production --body "$PROJECT_NUMBER" -R $GH_FULL_REPO
+# gh variable set WORKLOAD_IDENTITY_PROVIDER --env production --body "$PROVIDER_NAME" -R $GH_FULL_REPO
+# gh variable set SERVICE_ACCOUNT            --env production \
+#   --body "github-runner@${PROJECT_ID}.iam.gserviceaccount.com" -R $GH_FULL_REPO
+```
+
+Verify after setting:
+
+```bash
+gh variable list --env staging    -R $GH_FULL_REPO
+gh variable list --env production -R $GH_FULL_REPO
+```
+
+#### Required variables reference
+
+| Variable | Required | Description |
+|---|---|---|
+| `PROJECT_ID` | ✅ | GCP project ID for this environment |
+| `PROJECT_NUMBER` | ✅ | GCP project number for this environment |
+| `WORKLOAD_IDENTITY_PROVIDER` | ✅ | Full WIF provider name from Step 6 |
+| `SERVICE_ACCOUNT` | ✅ | `github-runner@PROJECT_ID.iam.gserviceaccount.com` |
+| `GE_APP_STAGING` | optional | Gemini Enterprise App ID (skip if not using GE) |
+| `OAUTH_CLIENT_ID_SECRET_NAME` | optional | Secret Manager secret name for GE OAuth credentials |
 
 ### Step 8: Add Repository Secrets (Optional)
 
-If you have secrets that should be available to all environments:
+For secrets shared across all environments (API keys, external credentials):
 
 1. Go to **Settings** → **Secrets and variables** → **Actions**
-2. Add repository secrets:
-   - Any API keys
-   - External service credentials
-   - etc.
+2. Add repository-level secrets as needed
 
-### Step 9: Verify Workflow File
+---
 
-The workflow file `.github/workflows/deploy.yml` should already be configured. Verify it contains:
+## Part 3: Deploy
 
-```yaml
-- name: Authenticate to Google Cloud
-  id: auth
-  uses: google-github-actions/auth@v2
-  with:
-    workload_identity_provider: '${{ env.WORKLOAD_IDENTITY_PROVIDER }}'
-    service_account: '${{ env.SERVICE_ACCOUNT }}'
-```
+### Step 9: Test Staging Deployment
 
-## Part 3: Testing the Setup
-
-### Step 10: Test Staging Deployment
+With Steps 1–8 complete, push any change to the `staging` branch:
 
 ```bash
-# Make a small change
-echo "# CI/CD Test" >> README.md
-
-# Commit and push to staging
-git add README.md
-git commit -m "test: trigger CI/CD pipeline"
+git checkout staging
+git commit --allow-empty -m "chore: trigger first CI/CD pipeline run"
 git push origin staging
 ```
 
-### Step 11: Monitor the Deployment
+Monitor the run:
 
 ```bash
-# Watch the GitHub Actions run
-gh run watch
+gh run watch -R $GH_FULL_REPO
 
-# Or view in browser
-gh run view --web
+# or open in browser
+gh run view --web -R $GH_FULL_REPO
 ```
 
-### Step 12: Verify Deployment
+Verify deployed resources:
 
 ```bash
-# Check deployed services
 gcloud run services list --region us-central1 --project $PROJECT_ID
-
-# Check deployed agents
 gcloud ai reasoning-engines list --region us-central1 --project $PROJECT_ID
 ```
 
-## Part 4: Production Deployment
-
-### Step 13: Deploy to Production
+### Step 10: Deploy to Production
 
 ```bash
-# Merge staging to main
 git checkout main
 git merge staging
 git push origin main
 ```
 
-The production environment will:
-- Require approval (if configured)
-- Deploy to production project
-- Apply production settings
+The production environment will require approval if you configured required reviewers in Step 7.
+
+---
+
+## Pipeline Behavior
+
+### What triggers deployment
+
+| Push to branch | Deploys to |
+|---|---|
+| `staging` | Staging environment |
+| `main` | Production environment |
+
+### Change detection — what gets deployed
+
+The pipeline only deploys components whose source files changed:
+
+| Changed path | Action |
+|---|---|
+| `src/mcp_servers/**` | Rebuild and redeploy MCP servers (Cloud Run) |
+| `src/a2a_agents/**` | Redeploy agents (Vertex AI Agent Engine) |
+| `src/frontend/**` | Rebuild and redeploy frontend (Cloud Run) |
+| `deployment/terraform/**` | Run `terraform apply` |
+| `.github/workflows/deploy.yml` | Redeploy frontend |
+
+### Deployment order within a run
+
+1. **Terraform** — enables APIs, sets IAM, configures Model Armor
+2. **MCP Servers** — Cloud Run services the agents call
+3. **Agents** — Vertex AI Agent Engine (via `deploy_agents.py`)
+4. **Frontend** — Cloud Run, configured with the agent engine ID from step 3
+
+> Agents are deployed via `deploy_agents.py` (Python SDK), not Terraform, to avoid Terraform managing the full agent lifecycle. See [deployment strategy docs](docs/) for rationale.
+
+---
 
 ## Troubleshooting
 
-### Error: "Failed to generate Google Cloud access token"
+### "must specify exactly one of workload_identity_provider or credentials_json"
 
-**Cause**: Workload Identity Federation not configured correctly
+**Cause**: GitHub environment variables are missing or not yet set.
 
-**Solution**:
+**Fix**: Complete Step 7. Verify variables exist:
 ```bash
-# Verify pool exists
+gh variable list --env staging -R $GH_FULL_REPO
+```
+All four required variables (`PROJECT_ID`, `PROJECT_NUMBER`, `WORKLOAD_IDENTITY_PROVIDER`, `SERVICE_ACCOUNT`) must be present.
+
+### "Failed to generate Google Cloud access token"
+
+**Cause**: Workload Identity Federation not configured correctly.
+
+**Fix**:
+```bash
+# Verify the pool exists
 gcloud iam workload-identity-pools describe github \
-  --location="global" \
-  --project=$PROJECT_ID
+  --location="global" --project=$PROJECT_ID
 
-# Verify provider exists
+# Verify the provider exists
 gcloud iam workload-identity-pools providers describe github-actions \
-  --location="global" \
-  --workload-identity-pool="github" \
-  --project=$PROJECT_ID
+  --location="global" --workload-identity-pool="github" --project=$PROJECT_ID
 
-# Verify service account binding
+# Verify the service account binding
 gcloud iam service-accounts get-iam-policy \
-  github-runner@${PROJECT_ID}.iam.gserviceaccount.com \
-  --project=$PROJECT_ID
+  github-runner@${PROJECT_ID}.iam.gserviceaccount.com --project=$PROJECT_ID
 ```
 
-### Error: "Permission denied" during deployment
+### "PERMISSION_DENIED: Read access to project was denied" (Model Armor)
 
-**Cause**: Service account lacks necessary permissions
+**Cause**: The `github-runner` service account is missing `roles/serviceusage.serviceUsageConsumer`. When using workload identity federation credentials, GCP requires this role to authorize the project as a quota project for newer APIs like Model Armor.
 
-**Solution**:
+**Fix**: Grant the role (should be done in Step 2 — check if it's present):
 ```bash
-# Check current roles
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:github-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/serviceusage.serviceUsageConsumer"
+```
+
+### "Permission denied" during Terraform IAM or API operations
+
+**Cause**: Service account is missing `roles/resourcemanager.projectIamAdmin` or `roles/serviceusage.serviceUsageAdmin`.
+
+**Fix**: Check current roles and add missing ones from Step 2:
+```bash
 gcloud projects get-iam-policy $PROJECT_ID \
   --flatten="bindings[].members" \
   --filter="bindings.members:github-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
   --format="table(bindings.role)"
-
-# Add missing roles (see Step 2)
 ```
-
-### Error: "Resource not found" for MCP servers
-
-**Cause**: MCP servers need to be deployed first or URLs are incorrect
-
-**Solution**:
-- Deploy MCP servers manually first
-- Or update workflow to skip checks for first deployment
 
 ### Pipeline runs but deployments are skipped
 
-**Cause**: Change detection filters in workflow
+**Cause**: Change detection — the pipeline only deploys components with changed files.
 
-**Solution**: Check which paths changed:
+**Fix**: Check what changed in your last commit:
 ```bash
 git diff HEAD~1 --name-only
 ```
 
-The workflow only deploys components with changed files.
+---
 
 ## Security Best Practices
 
-1. **Use Separate Projects**: Different projects for staging and production
-2. **Least Privilege**: Only grant necessary IAM roles
-3. **Environment Protection**: Enable required reviewers for production
-4. **Audit Logs**: Monitor Cloud Audit Logs for deployment activity
-5. **Rotate Regularly**: While WIF doesn't use keys, rotate service accounts periodically
-6. **Branch Protection**: Protect main branch, require PR reviews
+1. **Separate projects**: Use different GCP projects for staging and production
+2. **Least privilege**: Only grant the IAM roles listed in Step 2
+3. **Environment protection**: Enable required reviewers for the `production` GitHub environment
+4. **Branch protection**: Protect the `main` branch and require PR reviews
+5. **Audit logs**: Monitor Cloud Audit Logs for deployment activity
 
-## Cost Optimization
-
-The CI/CD pipeline includes smart deployment:
-- **Change Detection**: Only deploys changed components
-- **Skip Logic**: Skips deployment if resources already exist
-- **Terraform**: Manages infrastructure state efficiently
-
-## Pipeline Behavior
-
-### What Triggers Deployment?
-
-- Push to `staging` → Staging deployment
-- Push to `main` → Production deployment
-
-### What Gets Deployed?
-
-The pipeline detects changes in:
-- `src/mcp_servers/**` → Deploys MCP servers
-- `src/a2a_agents/**` → Deploys agents
-- `src/frontend/**` → Deploys frontend
-- `deployment/terraform/**` → Applies Terraform
-- `.github/workflows/deploy.yml` → Deploys frontend
-
-### Deployment Order
-
-1. MCP Servers (Cloud Run)
-2. Agents (Vertex AI Agent Engine)
-3. Frontend (Cloud Run)
-4. Infrastructure (Terraform)
-
-## Advanced Configuration
-
-### Custom Branch Deployments
-
-Add to `.github/workflows/deploy.yml`:
-
-```yaml
-on:
-  push:
-    branches:
-      - staging
-      - main
-      - feature/*  # Deploy feature branches
-```
-
-### Manual Workflow Trigger
-
-Add to workflow:
-
-```yaml
-on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy'
-        required: true
-        type: choice
-        options:
-          - staging
-          - production
-```
-
-### Deployment Notifications
-
-Add Slack/Discord notifications:
-
-```yaml
-- name: Notify on Success
-  if: success()
-  uses: slackapi/slack-github-action@v1
-  with:
-    webhook-url: ${{ secrets.SLACK_WEBHOOK }}
-    payload: |
-      {
-        "text": "Deployment succeeded for ${{ github.ref }}"
-      }
-```
-
-## Next Steps
-
-1. ✅ Complete WIF setup (Steps 1-6)
-2. ✅ Configure GitHub environments (Steps 7-8)
-3. ✅ Test staging deployment (Steps 10-12)
-4. ✅ Review and approve for production (Step 13)
-5. 📚 Read [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for adk-mb migration
-6. 🧪 Review [TESTING_SUMMARY.md](TESTING_SUMMARY.md) for testing
-
-## Support
-
-For issues:
-- Check [Troubleshooting](#troubleshooting) section above
-- Review GitHub Actions logs: `gh run view --log`
-- Check Cloud Console logs
-- Review [github-actions-wif-auth.md](github-actions-wif-auth.md) for WIF concepts
+---
 
 ## References
 

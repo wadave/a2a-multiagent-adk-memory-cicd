@@ -79,22 +79,22 @@ graph TD
 
 We strongly recommend using the automated CI/CD pipeline for deploying this infrastructure.
 
-<details>
-<summary><b>Prerequisites</b></summary>
-Before deploying, ensure you have:
-1. Active Google Cloud Project with Billing enabled.
-2. Required APIs enabled (Vertex AI, Cloud Run, Artifact Registry).
-3. `gcloud` CLI installed and authenticated.
-4. Python 3.12+ installed.
-</details>
-
 ### Automated CI/CD Setup (Recommended)
-You need to push the repo to GitHub first.
 
-This approach uses GitHub Actions and Workload Identity Federation (WIF) for secure, automated deployments via Terraform.
+**Before you push**, complete the one-time setup:
 
-1. **Detailed Guide**: Follow our comprehensive [CI/CD Setup Guide](cicd-setup.md) to configure your GitHub environments and WIF trust relationship.
-2. **Push to Deploy**: Once configured, pushing to the `main` branch will automatically trigger the deployment pipeline. The pipeline intelligently detects changes and deploys only affected components.
+| Step | What | Where |
+|---|---|---|
+| 1 | Fork/clone this repo to GitHub | GitHub |
+| 2 | Create a GCP service account (`github-runner`) with required IAM roles | GCP Console / `gcloud` |
+| 3 | Set up Workload Identity Federation (WIF) | GCP Console / `gcloud` |
+| 4 | **Set GitHub Actions environment variables** (`PROJECT_ID`, `WORKLOAD_IDENTITY_PROVIDER`, etc.) | GitHub → Settings → Environments |
+
+> ⚠️ Step 4 is the most commonly missed step. The pipeline will fail at authentication if these variables are not set.
+
+Follow the **[CI/CD Setup Guide](cicd-setup.md)** for full instructions and copy-paste commands.
+
+Once configured, pushing to `staging` or `main` automatically triggers the pipeline — it detects which components changed and only deploys what's needed.
 
 ### Manual Deployment
 
