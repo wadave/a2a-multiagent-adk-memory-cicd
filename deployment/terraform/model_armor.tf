@@ -29,7 +29,7 @@ resource "time_sleep" "wait_for_modelarmor_admin_iam" {
 resource "null_resource" "model_armor_floor_settings" {
   provisioner "local-exec" {
     command = <<EOT
-      for i in {1..12}; do
+      for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
         if gcloud model-armor floorsettings update \
           --full-uri=projects/${var.deploy_project_id}/locations/global/floorSetting \
           --enable-floor-setting-enforcement=TRUE \
