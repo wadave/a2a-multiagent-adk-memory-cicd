@@ -44,3 +44,14 @@ resource "google_project_iam_member" "github_runner_token_accessor" {
   role    = "roles/cloudbuild.readTokenAccessor"
   member  = "serviceAccount:github-runner@${var.cicd_runner_project_id}.iam.gserviceaccount.com"
 }
+
+# Grant the CI/CD service account Service Usage Consumer so that workload identity
+# federation credentials can use the project as a quota/billing project.
+# Without this, newer GCP APIs (like Model Armor) reject calls from external
+# credentials with PERMISSION_DENIED even when the service account has the API-
+# specific role (roles/modelarmor.admin).
+resource "google_project_iam_member" "github_runner_serviceusage_consumer" {
+  project = var.deploy_project_id
+  role    = "roles/serviceusage.serviceUsageConsumer"
+  member  = "serviceAccount:github-runner@${var.cicd_runner_project_id}.iam.gserviceaccount.com"
+}

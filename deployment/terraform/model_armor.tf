@@ -22,7 +22,8 @@ resource "time_sleep" "wait_for_modelarmor_admin_iam" {
   create_duration = "30s"
 
   depends_on = [
-    google_project_iam_member.github_runner_modelarmor_admin
+    google_project_iam_member.github_runner_modelarmor_admin,
+    google_project_iam_member.github_runner_serviceusage_consumer,
   ]
 }
 
