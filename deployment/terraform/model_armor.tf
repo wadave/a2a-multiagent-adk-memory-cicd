@@ -40,8 +40,7 @@ resource "null_resource" "model_armor_floor_settings" {
           --pi-and-jailbreak-filter-settings-confidence-level=low-and-above \
           --malicious-uri-filter-settings-enforcement=ENABLED \
           --rai-settings-filters="confidenceLevel=LOW_AND_ABOVE,filterType=HATE_SPEECH","confidenceLevel=LOW_AND_ABOVE,filterType=DANGEROUS","confidenceLevel=LOW_AND_ABOVE,filterType=SEXUALLY_EXPLICIT","confidenceLevel=LOW_AND_ABOVE,filterType=HARASSMENT" \
-          --project=${var.deploy_project_id} \
-          --billing-project=${var.deploy_project_id}; then
+          --project=${var.deploy_project_id}; then
           echo "Successfully updated floor settings"
           exit 0
         fi
