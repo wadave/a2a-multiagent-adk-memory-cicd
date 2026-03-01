@@ -28,7 +28,7 @@ locals {
   }
 }
 
-# Fetch OAuth credentials from Secret Manager
+# Fetch OAuth credentials from Secret Manager (JSON payload expected)
 data "google_secret_manager_secret_version" "oauth_client_secret" {
   count    = var.oauth_client_id_secret_name != "" ? 1 : 0
   provider = google

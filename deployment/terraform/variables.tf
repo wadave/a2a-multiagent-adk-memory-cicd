@@ -53,7 +53,7 @@ variable "project_number" {
 }
 
 variable "oauth_client_id_secret_name" {
-  description = "Secret Manager secret name containing OAuth client credentials"
+  description = "The name of the Secret in Secret Manager containing the Gemini Enterprise OAuth Client Credentials JSON payload"
   type        = string
   default     = ""
 }
