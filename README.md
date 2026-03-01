@@ -33,6 +33,11 @@ The application features a Host Agent coordinating tasks between specialized rem
 
 ## Architecture
 
+
+
+![architecture](assets/a2a-ae-armor.png)
+
+System Diagram::
 ```mermaid
 graph TD
     User((User)) -->|HTTPS| CustomUI[Gradio Frontend]
@@ -66,7 +71,6 @@ graph TD
     end
 ```
 
-![architecture](assets/a2a-ae-armor.png)
 
 ### Core Components
 

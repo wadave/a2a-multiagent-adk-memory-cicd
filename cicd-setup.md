@@ -102,6 +102,11 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:github-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/resourcemanager.projectIamAdmin"
+
+# Required for Model Armor API quota checks
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:github-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/serviceusage.serviceUsageConsumer"
 ```
 
 ### Step 3: Create Workload Identity Pool
@@ -339,7 +344,7 @@ gcloud iam service-accounts get-iam-policy \
 
 **Cause**: The `github-runner` service account is missing `roles/serviceusage.serviceUsageConsumer`. When using workload identity federation credentials, GCP requires this role to authorize the project as a quota project for newer APIs like Model Armor.
 
-**Fix**: Grant the role (should be done in Step 2 — check if it's present):
+**Fix**: Grant the role (this is included in Step 2, but verify if it's present):
 ```bash
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:github-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
