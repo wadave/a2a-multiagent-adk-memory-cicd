@@ -19,6 +19,14 @@ resource "google_project_service" "modelarmor_api" {
   disable_on_destroy = false
 }
 
+resource "time_sleep" "wait_for_modelarmor_admin_iam" {
+  create_duration = "30s"
+
+  depends_on = [
+    google_project_iam_member.github_runner_modelarmor_admin
+  ]
+}
+
 resource "null_resource" "model_armor_floor_settings" {
   for_each = local.deploy_project_ids
 
@@ -39,6 +47,7 @@ resource "null_resource" "model_armor_floor_settings" {
   }
 
   depends_on = [
-    google_project_service.modelarmor_api
+    google_project_service.modelarmor_api,
+    time_sleep.wait_for_modelarmor_admin_iam
   ]
 }

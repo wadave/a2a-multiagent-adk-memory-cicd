@@ -226,6 +226,7 @@ Pipfile
 .env.test.local
 .env.production.local
 .env.local
+.env.deploy
 
 # Secrets & Credentials (NEVER COMMIT THESE)
 credentials.json
