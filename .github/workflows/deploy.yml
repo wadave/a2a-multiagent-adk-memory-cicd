@@ -87,7 +87,7 @@ jobs:
           # Check if agents exist
           AGENT_EXISTS=$(curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
             "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=1" \
-            | jq -r '.reasoningEngines[]? | select(.displayName | contains("adk-mb")) | .name' | head -1 || echo "")
+            | jq -r '.reasoningEngines[]? | select(.displayName | ascii_downcase | contains("adk-mb")) | .name' | head -1 || echo "")
 
           # Check if frontend exists
           FRONTEND_EXISTS=$(gcloud run services describe a2a-frontend-adk-mb \
@@ -514,7 +514,7 @@ jobs:
           # Check if agents exist
           AGENT_EXISTS=$(curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
             "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=1" \
-            | jq -r '.reasoningEngines[]? | select(.displayName | contains("adk-mb")) | .name' | head -1 || echo "")
+            | jq -r '.reasoningEngines[]? | select(.displayName | ascii_downcase | contains("adk-mb")) | .name' | head -1 || echo "")
 
           # Check if frontend exists
           FRONTEND_EXISTS=$(gcloud run services describe a2a-frontend-adk-mb \
