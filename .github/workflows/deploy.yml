@@ -298,7 +298,8 @@ jobs:
           echo "Deploying agents with MCP Server URLs:"
           echo "  Cocktail: $CT_MCP_SERVER_URL"
           echo "  Weather: $WEA_MCP_SERVER_URL"
-          .venv/bin/python deployment/deploy_agents.py
+          source .venv/bin/activate
+          python deployment/deploy_agents.py
 
       # 7. Get Agent Engine ID for frontend and GE registration
       - name: Get Agent Engine ID
@@ -741,7 +742,8 @@ jobs:
           echo "Deploying agents with MCP Server URLs:"
           echo "  Cocktail: $CT_MCP_SERVER_URL"
           echo "  Weather: $WEA_MCP_SERVER_URL"
-          .venv/bin/python deployment/deploy_agents.py
+          source .venv/bin/activate
+          python deployment/deploy_agents.py
 
       # 7. Get Agent Engine ID for frontend and GE registration
       - name: Get Agent Engine ID
