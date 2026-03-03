@@ -39,11 +39,14 @@ resource "google_project_iam_member" "github_runner_modelarmor_admin" {
 }
 
 # roles/modelarmor.admin does NOT include resourcemanager.projects.get, which
-# every gcloud command needs to validate the target project.  projectViewer
-# adds only read-only project metadata access — the minimal addition required.
-resource "google_project_iam_member" "github_runner_project_viewer" {
+# every gcloud command needs to validate the target project.
+# roles/browser is the minimal project-assignable role that includes
+# resourcemanager.projects.get without any write or service-specific access.
+# (roles/resourcemanager.projectViewer is org/folder-level only and cannot
+# be granted at the project level.)
+resource "google_project_iam_member" "github_runner_browser" {
   project = var.deploy_project_id
-  role    = "roles/resourcemanager.projectViewer"
+  role    = "roles/browser"
   member  = "serviceAccount:github-runner@${var.cicd_runner_project_id}.iam.gserviceaccount.com"
 }
 
