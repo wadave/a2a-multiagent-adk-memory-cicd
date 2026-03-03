@@ -19,7 +19,8 @@ import logging
 import os
 import subprocess
 import sys
-from typing import Any, Awaitable, Callable, Dict
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from starlette.requests import Request
 from vertexai.preview.reasoning_engines import A2aAgent
@@ -27,16 +28,16 @@ from vertexai.preview.reasoning_engines import A2aAgent
 # Add src to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from a2a_agents.cocktail_agent.cocktail_agent_card import cocktail_agent_card
-from a2a_agents.cocktail_agent.agent_executor import CocktailAgentExecutor
 import a2a_agents.common.adk_base_mcp_agent_executor as executor_module
+from a2a_agents.cocktail_agent.agent_executor import CocktailAgentExecutor
+from a2a_agents.cocktail_agent.cocktail_agent_card import cocktail_agent_card
 
 logging.basicConfig(level=logging.INFO)
 
 # --- Monkeypatch for Local Auth ---
 
 
-def mock_get_gcp_auth_headers(audience: str) -> Dict[str, str]:
+def mock_get_gcp_auth_headers(audience: str) -> dict[str, str]:
     """Mock that uses gcloud to get a token working for local user."""
     try:
         # Use audiences flag for OIDC token
@@ -52,7 +53,7 @@ def mock_get_gcp_auth_headers(audience: str) -> Dict[str, str]:
                 ["gcloud", "auth", "print-identity-token"], text=True
             ).strip()
             return {"Authorization": f"Bearer {token}"}
-        except:
+        except Exception:
             logging.error(f"Failed to get gcloud token: {e}")
             return {}
 
@@ -107,7 +108,7 @@ def build_get_request(path_params: dict[str, str]) -> Request:
     return Request(scope, receive)
 
 
-from tests import test_config
+from tests import test_config  # noqa: E402
 
 # --- Test Logic ---
 

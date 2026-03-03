@@ -13,9 +13,10 @@
 # limitations under the License.
 """Unit tests for orchestrator agent logic."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from a2a.types import AgentCard, AgentSkill, AgentCapabilities
+from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 
 from a2a_agents.common.adk_orchestrator_agent import AdkOrchestratorAgent
 

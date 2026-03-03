@@ -23,12 +23,12 @@ import asyncio
 import logging
 import os
 import traceback
-from typing import Any, AsyncIterator, List
+from collections.abc import AsyncIterator
+from typing import Any
 
 import gradio as gr
 import httpx
 import vertexai
-from a2a.client import Client, ClientConfig, ClientFactory
 from a2a.types import (
     Message,
     Part,
@@ -42,6 +42,8 @@ from google.auth import default
 from google.auth.transport.requests import Request as AuthRequest
 from google.genai import types as genai_types
 
+from a2a.client import Client, ClientConfig, ClientFactory
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -53,8 +55,31 @@ load_dotenv()
 
 PROJECT_ID = os.getenv("PROJECT_ID")
 PROJECT_NUMBER = os.getenv("PROJECT_NUMBER")
-AGENT_ENGINE_ID = os.getenv("AGENT_ENGINE_ID")
 LOCATION = os.getenv("LOCATION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "us-central1"
+
+
+def _resolve_agent_engine_id() -> str | None:
+    """Read agent engine ID from env var, falling back to Secret Manager."""
+    value = os.getenv("AGENT_ENGINE_ID", "")
+    if value and value != "unset":
+        return value
+    if not PROJECT_ID:
+        return value or None
+    try:
+        from google.cloud import secretmanager
+        sm = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{PROJECT_ID}/secrets/agent-engine-id/versions/latest"
+        resp = sm.access_secret_version(request={"name": name})
+        secret_val = resp.payload.data.decode("UTF-8")
+        if secret_val and secret_val != "unset":
+            logger.info("Loaded AGENT_ENGINE_ID from Secret Manager.")
+            return secret_val
+    except Exception as e:
+        logger.warning(f"Could not read AGENT_ENGINE_ID from Secret Manager: {e}")
+    return value or None
+
+
+AGENT_ENGINE_ID = _resolve_agent_engine_id()
 
 
 # Initialize Vertex AI session
@@ -111,7 +136,7 @@ async def get_agent_card(resource_name: str):
 
     logger.info(f"Fetching agent card for {resource_name}...")
     config = {
-        "http_options": {"base_url": f"https://LOCATION-aiplatform.googleapis.com"}
+        "http_options": {"base_url": "https://LOCATION-aiplatform.googleapis.com"}
     }
     # Fix the template LOCATION variable if it was literally LOCATION
     actual_location = LOCATION or "us-central1"
@@ -129,7 +154,7 @@ async def get_agent_card(resource_name: str):
 
 async def get_response_from_agent(
     query: str,
-    history: List[gr.ChatMessage],
+    history: list[gr.ChatMessage],
 ) -> AsyncIterator[gr.ChatMessage]:
     """Get response from host agent."""
 
@@ -166,7 +191,7 @@ async def get_response_from_agent(
 
         async for response_chunk in response_stream:
             task_object = response_chunk[0]
-            
+
             # Show status updates in the UI
             status_text = task_object.status.state.name if hasattr(task_object.status.state, "name") else str(task_object.status.state)
             yield gr.ChatMessage(role="assistant", content=f"*Agent status: {status_text}...*")
@@ -254,7 +279,7 @@ if __name__ == "__main__":
         async def shutdown():
             await shared_httpx_client.aclose()
             logger.info("Shared HTTP client closed.")
-        
+
         # Run shutdown if loop is already closed or still running
         try:
             loop = asyncio.get_event_loop()

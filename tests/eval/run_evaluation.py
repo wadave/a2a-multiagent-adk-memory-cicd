@@ -15,13 +15,10 @@
 """Run agent evaluation tests."""
 
 import argparse
-import asyncio
 import json
 import logging
-import os
 import sys
 from pathlib import Path
-from typing import Dict, List
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -29,19 +26,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_evalset(evalset_path: Path) -> Dict:
+def load_evalset(evalset_path: Path) -> dict:
     """Load an evaluation set."""
     with open(evalset_path) as f:
         return json.load(f)
 
 
-def load_eval_config(config_path: Path) -> Dict:
+def load_eval_config(config_path: Path) -> dict:
     """Load evaluation configuration."""
     with open(config_path) as f:
         return json.load(f)
 
 
-def calculate_rubric_score(example: Dict, response: str) -> Dict[str, float]:
+def calculate_rubric_score(example: dict, response: str) -> dict[str, float]:
     """Calculate rubric-based scores for a response.
 
     Args:
@@ -89,7 +86,7 @@ def calculate_rubric_score(example: Dict, response: str) -> Dict[str, float]:
     return scores
 
 
-def evaluate_example(example: Dict, config: Dict) -> Dict:
+def evaluate_example(example: dict, config: dict) -> dict:
     """Evaluate a single example.
 
     Args:
@@ -102,7 +99,7 @@ def evaluate_example(example: Dict, config: Dict) -> Dict:
     # Handle different example formats
     example_id = example.get("id") or example.get("eval_id", "unknown")
     category = example.get("category", "unknown")
-    
+
     # Extract input from 'input' or 'conversation'
     user_input = example.get("input", "")
     if not user_input and "conversation" in example:

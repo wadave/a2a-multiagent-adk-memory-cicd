@@ -65,11 +65,6 @@ resource "google_cloud_run_v2_service" "a2a_frontend" {
       image = "gcr.io/${var.cicd_runner_project_id}/a2a-frontend-adk-mb:latest"
 
       env {
-        name  = "AGENT_ENGINE_ID"
-        value = var.agent_engine_id
-      }
-
-      env {
         name  = "PROJECT_ID"
         value = var.cicd_runner_project_id
       }

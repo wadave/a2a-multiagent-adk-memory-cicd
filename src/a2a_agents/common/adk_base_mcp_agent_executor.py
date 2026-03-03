@@ -16,35 +16,33 @@ import logging
 import os
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, NoReturn
+from typing import NoReturn
 
-from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.events import EventQueue
-from a2a.server.tasks import TaskUpdater
 from a2a.types import Role, TaskState, TextPart, UnsupportedOperationError
-from a2a.utils import new_agent_text_message
 from a2a.utils.errors import ServerError
-from google import adk
-from google.adk import Runner
-from google.adk.agents import LlmAgent
-from google.adk.models import Gemini
-from google.adk.artifacts import InMemoryArtifactService
-from google.adk.memory import VertexAiMemoryBankService
-from google.adk.sessions import VertexAiSessionService
-from google.genai import Client
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 from google.adk.tools.mcp_tool.mcp_toolset import McpToolset
 from google.auth import exceptions as google_auth_exceptions
 from google.auth.transport import requests as google_auth_requests
-from google.genai import types
+from google.genai import Client, types
 from google.oauth2 import id_token as google_id_token
 
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.events import EventQueue
+from a2a.server.tasks import TaskUpdater
+from a2a.utils import new_agent_text_message
 from a2a_agents.common.agent_configs import DEFAULT_MODEL
 from a2a_agents.common.logging_utils import setup_cloud_logging
+from google import adk
+from google.adk import Runner
+from google.adk.agents import LlmAgent
+from google.adk.artifacts import InMemoryArtifactService
+from google.adk.memory import VertexAiMemoryBankService
+from google.adk.models import Gemini
+from google.adk.sessions import VertexAiSessionService
 
 
-
-def get_gcp_auth_headers(audience: str) -> Dict[str, str]:
+def get_gcp_auth_headers(audience: str) -> dict[str, str]:
     """
     Fetches a Google Cloud OIDC token for a target audience using ADC.
 
@@ -173,7 +171,7 @@ class TokenManager:
         self._token = None
         self._expiry = None
 
-    def get_headers(self) -> Dict[str, str]:
+    def get_headers(self) -> dict[str, str]:
         """
         Get authorization headers with a fresh or cached token.
 
@@ -235,7 +233,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         if self.agent_engine_id is None:
             # Check environment variable first (may be set on Vertex AI or during deploy)
             self.agent_engine_id = os.environ.get("AGENT_ENGINE_ID")
-            
+
             # If still None, we don't auto-create here to avoid resource leaks
             # during local instantiation/deployment. We'll fallback to in-memory
             # services in _init_agent if no ID is available.
@@ -244,7 +242,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
 
 
     @abstractmethod
-    def get_agent_config(self) -> Dict:
+    def get_agent_config(self) -> dict:
         """
         Return agent configuration dictionary.
 
@@ -423,7 +421,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         # Initialize agent on first call
         if self.agent is None or self.runner is None:
             self._init_agent()
-        
+
         # Ensure we have a runner and agent after init
         if not self.runner or not self.agent:
             raise ServerError(message="Agent executor failed to initialize")
@@ -462,7 +460,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
             # Run the agent asynchronously
             # This may involve multiple LLM calls and tool uses
             answer_sent = False
-            
+
             # Use local variable for type safety
             runner = self.runner
             if runner is None:
@@ -552,11 +550,11 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
             if ":" in user_email:
                 return user_email.split(":")[-1]
             return user_email
-        
+
         user_id = headers.get("x-goog-authenticated-user-id")
         if user_id:
             return user_id
-            
+
         return "user"  # Fallback to default if not authenticated or not provided
 
     def _extract_answer(self, event) -> str:

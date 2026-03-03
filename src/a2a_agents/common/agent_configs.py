@@ -18,11 +18,10 @@ This module contains configuration dictionaries for different agent types.
 Each configuration defines the agent's name, description, instruction, and MCP settings.
 """
 
-from typing import Dict
 
 DEFAULT_MODEL = "gemini-2.5-flash"
 
-COCKTAIL_AGENT_CONFIG: Dict = {
+COCKTAIL_AGENT_CONFIG: dict = {
     "name": "cocktail_agent",
     "description": "An agent that can help questions about cocktail",
     "instruction": (
@@ -39,7 +38,7 @@ COCKTAIL_AGENT_CONFIG: Dict = {
 }
 
 
-WEATHER_AGENT_CONFIG: Dict = {
+WEATHER_AGENT_CONFIG: dict = {
     "name": "weather_agent",
     "description": "An agent that can help questions about weather",
     "instruction": (

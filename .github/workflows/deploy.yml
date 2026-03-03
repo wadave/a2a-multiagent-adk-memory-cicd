@@ -10,24 +10,21 @@ on:
       - 'assets/**'
   workflow_dispatch:
 
-
 env:
   REGION: us-central1
-  SERVICE_NAME: a2a-frontend-adk-mb
   PYTHON_VERSION: '3.12'
 
 jobs:
-  deploy-staging:
-    if: github.ref == 'refs/heads/staging'
+  deploy:
+    if: github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: staging
-    # Prevent concurrent deployments to staging
+    environment: ${{ github.ref_name }}
     concurrency:
-      group: deploy-staging
+      group: deploy-${{ github.ref_name }}
       cancel-in-progress: false
     permissions:
-      contents: 'read'
-      id-token: 'write'
+      contents: read
+      id-token: write
 
     env:
       PROJECT_ID: ${{ vars.PROJECT_ID }}
@@ -41,7 +38,6 @@ jobs:
         with:
           fetch-depth: 2
 
-      # Detect which components have code changes
       - name: Detect changed components
         uses: dorny/paths-filter@v3
         id: changes
@@ -60,815 +56,166 @@ jobs:
             terraform:
               - 'deployment/terraform/**'
 
-      # 1. Authenticate to Google Cloud
       - name: Authenticate to Google Cloud
-        id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: '${{ env.WORKLOAD_IDENTITY_PROVIDER }}'
-          service_account: '${{ env.SERVICE_ACCOUNT }}'
-          project_id: '${{ env.PROJECT_ID }}'
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}
+          project_id: ${{ env.PROJECT_ID }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # 2. Check if resources exist (for first-time deployment detection)
-      - name: Check existing resources
-        id: check_resources
-        run: |
-          # Check if MCP servers exist
-          COCKTAIL_EXISTS=$(gcloud run services describe cocktail-remote-mcp-server-adk-mb \
-            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
-            --format='value(name)' 2>/dev/null || echo "")
-          WEATHER_EXISTS=$(gcloud run services describe weather-remote-mcp-server-adk-mb \
-            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
-            --format='value(name)' 2>/dev/null || echo "")
-
-          # Check if agents exist
-          AGENT_EXISTS=$(curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-            "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=1" \
-            | jq -r '.reasoningEngines[]? | select(.displayName | ascii_downcase | contains("adk-mb")) | .name' | head -1 || echo "")
-
-          # Check if frontend exists
-          FRONTEND_EXISTS=$(gcloud run services describe a2a-frontend-adk-mb \
-            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
-            --format='value(name)' 2>/dev/null || echo "")
-
-          # Set flags
-          [ -z "$COCKTAIL_EXISTS" ] && echo "COCKTAIL_MCP_EXISTS=false" >> $GITHUB_OUTPUT || echo "COCKTAIL_MCP_EXISTS=true" >> $GITHUB_OUTPUT
-          [ -z "$WEATHER_EXISTS" ] && echo "WEATHER_MCP_EXISTS=false" >> $GITHUB_OUTPUT || echo "WEATHER_MCP_EXISTS=true" >> $GITHUB_OUTPUT
-          [ -z "$AGENT_EXISTS" ] && echo "AGENTS_EXIST=false" >> $GITHUB_OUTPUT || echo "AGENTS_EXIST=true" >> $GITHUB_OUTPUT
-          [ -z "$FRONTEND_EXISTS" ] && echo "FRONTEND_EXISTS=false" >> $GITHUB_OUTPUT || echo "FRONTEND_EXISTS=true" >> $GITHUB_OUTPUT
-
-          echo "Resource check:"
-          echo "  Cocktail MCP: $([ -z "$COCKTAIL_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
-          echo "  Weather MCP: $([ -z "$WEATHER_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
-          echo "  Agents: $([ -z "$AGENT_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
-          echo "  Frontend: $([ -z "$FRONTEND_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
-
-      # 3. Determine deployment flags based on changes and dependencies
-      - name: Set deployment flags
-        id: deploy_flags
-        run: |
-          # Deploy MCP servers if code changed OR if they don't exist (first-time deployment)
-          if [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
-             [ "${{ steps.check_resources.outputs.COCKTAIL_MCP_EXISTS }}" == "false" ]; then
-            echo "DEPLOY_COCKTAIL_MCP=true" >> $GITHUB_OUTPUT
-            echo "Will deploy Cocktail MCP (changed or doesn't exist)"
-          else
-            echo "DEPLOY_COCKTAIL_MCP=false" >> $GITHUB_OUTPUT
-          fi
-
-          if [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
-             [ "${{ steps.check_resources.outputs.WEATHER_MCP_EXISTS }}" == "false" ]; then
-            echo "DEPLOY_WEATHER_MCP=true" >> $GITHUB_OUTPUT
-            echo "Will deploy Weather MCP (changed or doesn't exist)"
-          else
-            echo "DEPLOY_WEATHER_MCP=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Deploy agents if:
-          # - Agent code changed, OR
-          # - Any MCP server changed, OR
-          # - Agents don't exist (first-time deployment)
-          if [ "${{ steps.changes.outputs.agents }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
-             [ "${{ steps.check_resources.outputs.AGENTS_EXIST }}" == "false" ]; then
-            echo "DEPLOY_AGENTS=true" >> $GITHUB_OUTPUT
-            echo "Will deploy Agents (changed, dependencies changed, or don't exist)"
-          else
-            echo "DEPLOY_AGENTS=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Deploy frontend if:
-          # - Frontend code changed, OR
-          # - Agents changed, OR
-          # - Frontend doesn't exist (first-time deployment)
-          if [ "${{ steps.changes.outputs.frontend }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.agents }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
-             [ "${{ steps.check_resources.outputs.FRONTEND_EXISTS }}" == "false" ]; then
-            echo "DEPLOY_FRONTEND=true" >> $GITHUB_OUTPUT
-            echo "Will deploy Frontend (changed, dependencies changed, or doesn't exist)"
-          else
-            echo "DEPLOY_FRONTEND=false" >> $GITHUB_OUTPUT
-          fi
-
-      # 4. Build MCP Server Images (Terraform will deploy them)
-      - name: Build Cocktail MCP Server Image
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true'
-        run: |
-          echo "Building Cocktail MCP Server image..."
-          gcloud builds submit ./src/mcp_servers/cocktail_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb:latest \
-            --project ${{ env.PROJECT_ID }}
-
-      - name: Build Weather MCP Server Image
-        if: steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
-        run: |
-          echo "Building Weather MCP Server image..."
-          gcloud builds submit ./src/mcp_servers/weather_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb:latest \
-            --project ${{ env.PROJECT_ID }}
-
-      # 4. Deploy MCP Servers via Terraform (if images were built)
-      - name: Setup Terraform for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Ensure Terraform state bucket exists
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
-        run: |
-          gcloud storage buckets describe gs://${{ env.PROJECT_ID }}-terraform-state 2>/dev/null || \
-          gcloud storage buckets create gs://${{ env.PROJECT_ID }}-terraform-state \
-            --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
-
-      - name: Terraform Init for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
-        run: |
-          terraform init \
-            -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
-            -backend-config="prefix=${{ github.event.repository.name }}/staging"
-        working-directory: deployment/terraform
-
-      - name: Import existing MCP Cloud Run services
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
-        working-directory: deployment/terraform
-        run: |
-          terraform import \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=unset" \
-            google_cloud_run_v2_service.cocktail_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
-
-          terraform import \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=unset" \
-            google_cloud_run_v2_service.weather_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
-
-      - name: Terraform Apply MCP Servers
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
-        run: |
-          terraform apply -auto-approve \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=unset" \
-            -target=google_cloud_run_v2_service.cocktail_mcp_server \
-            -target=google_cloud_run_v2_service.weather_mcp_server \
-            -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_compute_invoker \
-            -target=google_cloud_run_v2_service_iam_member.weather_mcp_compute_invoker
-        working-directory: deployment/terraform
-
-      # 5. Get MCP Server URLs (only if deploying agents)
-      - name: Get MCP Server URLs
-        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
-        id: mcp_urls
-        run: |
-          # Wait a few seconds for Cloud Run services to be fully ready
-          echo "Waiting for MCP services to be ready..."
-          sleep 10
-
-          # Get Cocktail MCP Server URL
-          CT_URL=$(gcloud run services describe cocktail-remote-mcp-server-adk-mb \
-            --region=${{ env.REGION }} \
-            --project=${{ env.PROJECT_ID }} \
-            --format='value(status.url)' 2>/dev/null || echo "")
-
-          if [ -z "$CT_URL" ]; then
-            echo "ERROR: Could not get Cocktail MCP Server URL"
-            echo "This might indicate the service failed to deploy. Check Cloud Run console."
-            exit 1
-          fi
-          echo "CT_MCP_SERVER_URL=${CT_URL}/mcp/sse" >> $GITHUB_OUTPUT
-          echo "Cocktail MCP Server URL: ${CT_URL}/mcp/sse"
-
-          # Get Weather MCP Server URL
-          WEA_URL=$(gcloud run services describe weather-remote-mcp-server-adk-mb \
-            --region=${{ env.REGION }} \
-            --project=${{ env.PROJECT_ID }} \
-            --format='value(status.url)' 2>/dev/null || echo "")
-
-          if [ -z "$WEA_URL" ]; then
-            echo "ERROR: Could not get Weather MCP Server URL"
-            echo "This might indicate the service failed to deploy. Check Cloud Run console."
-            exit 1
-          fi
-          echo "WEA_MCP_SERVER_URL=${WEA_URL}/mcp/sse" >> $GITHUB_OUTPUT
-          echo "Weather MCP Server URL: ${WEA_URL}/mcp/sse"
-
-      # 6. Deploy A2A Agents (when code changed or MCP servers updated)
       - name: Set up Python
-        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dependencies
-        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
+      - name: Install uv
+        run: pip install uv
+
+      # ── Build Container Images ──────────────────────────────────────────────
+
+      - name: Build and push Cocktail MCP Server
+        if: steps.changes.outputs.cocktail_mcp == 'true'
         run: |
-          python -m venv .venv
-          .venv/bin/pip install keyrings.google-artifactregistry-auth
-          .venv/bin/pip install -e . --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
+          gcloud builds submit ./src/mcp_servers/cocktail_mcp_server \
+            --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb:latest \
+            --project ${{ env.PROJECT_ID }}
 
-      - name: Run A2A Deploy Script
-        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
-        id: deploy_agents
-        env:
-          PROJECT_ID: ${{ env.PROJECT_ID }}
-          PROJECT_NUMBER: ${{ env.PROJECT_NUMBER }}
-          GOOGLE_CLOUD_REGION: ${{ env.REGION }}
-          CT_MCP_SERVER_URL: ${{ steps.mcp_urls.outputs.CT_MCP_SERVER_URL }}
-          WEA_MCP_SERVER_URL: ${{ steps.mcp_urls.outputs.WEA_MCP_SERVER_URL }}
-          PYTHONPATH: src
+      - name: Build and push Weather MCP Server
+        if: steps.changes.outputs.weather_mcp == 'true'
         run: |
-          echo "Deploying agents with MCP Server URLs:"
-          echo "  Cocktail: $CT_MCP_SERVER_URL"
-          echo "  Weather: $WEA_MCP_SERVER_URL"
-          .venv/bin/pip install a2a-sdk google-adk --target src/ --no-deps --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
-          source .venv/bin/activate
-          python deployment/deploy_agents.py
+          gcloud builds submit ./src/mcp_servers/weather_mcp_server \
+            --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb:latest \
+            --project ${{ env.PROJECT_ID }}
 
-      # 7. Get Agent Engine ID for frontend and GE registration
-      - name: Get Agent Engine ID
-        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
-        id: agent_id
+      - name: Build and push Frontend
+        if: steps.changes.outputs.frontend == 'true'
         run: |
-          # Use newly deployed agent ID if available, otherwise find existing agent
-          if [ -n "${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" ]; then
-            AGENT_ID="${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}"
-            echo "Using newly deployed Agent Engine ID: $AGENT_ID"
-          else
-            # Wait for agents to be deployed
-            echo "Waiting for agents to be ready..."
-            sleep 10
-
-            AGENT_ID=$(curl -s \
-              -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-              "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
-              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
-              | head -1)
-
-            if [ -z "$AGENT_ID" ]; then
-              echo "ERROR: Could not find Hosting Agent"
-              echo "This might indicate the agent deployment failed. Check Agent Engine console."
-              exit 1
-            fi
-            echo "Using existing Agent Engine ID: $AGENT_ID"
-          fi
-          echo "AGENT_ENGINE_ID=$AGENT_ID" >> $GITHUB_OUTPUT
-
-      # 7b. Get Agent Engine ID for GE registration (soft-fail: skips GE if agent not found)
-      - name: Get Agent Engine ID for GE Registration
-        if: vars.GE_APP_STAGING != ''
-        id: ge_agent_id
-        run: |
-          # Prefer newly deployed agent ID; fall back to lookup of existing agent
-          if [ -n "${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" ]; then
-            echo "GE_AGENT_ENGINE_ID=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" >> $GITHUB_OUTPUT
-            echo "Using newly deployed Agent Engine ID: ${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}"
-          else
-            AGENT_ID=$(curl -s \
-              -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-              "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
-              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
-              | head -1)
-            echo "GE_AGENT_ENGINE_ID=${AGENT_ID}" >> $GITHUB_OUTPUT
-            if [ -z "$AGENT_ID" ]; then
-              echo "WARNING: No Hosting Agent found. GE registration will be skipped."
-            else
-              echo "Using existing Agent Engine ID: $AGENT_ID"
-            fi
-          fi
-
-      # 8. Build Frontend Image (Terraform will deploy it)
-      - name: Build Frontend Image
-        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
-        run: |
-          echo "Building Frontend image..."
           gcloud builds submit ./src/frontend \
             --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
-      # 9. Deploy Frontend via Terraform (when frontend changed or after agent deployment)
-      - name: Import Frontend Cloud Run service
-        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
+      # ── Single Terraform Apply ──────────────────────────────────────────────
+      # Reads the previously deployed agent_engine_id from Secret Manager
+      # (written by a prior run). "unset" is used as the safe default on first run,
+      # which causes the Gemini Enterprise registration module to be skipped.
+
+      - name: Get previous agent engine ID
+        id: prev_agent_id
+        run: |
+          AGENT_ID=$(gcloud secrets versions access latest \
+            --secret=agent-engine-id \
+            --project=${{ env.PROJECT_ID }} 2>/dev/null || echo "unset")
+          echo "AGENT_ENGINE_ID=${AGENT_ID}" >> $GITHUB_OUTPUT
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Ensure Terraform state bucket exists
+        run: |
+          gcloud storage buckets describe gs://${{ env.PROJECT_ID }}-terraform-state 2>/dev/null || \
+          gcloud storage buckets create gs://${{ env.PROJECT_ID }}-terraform-state \
+            --location=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }}
+
+      - name: Terraform Init
         working-directory: deployment/terraform
         run: |
-          terraform import \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
-            google_cloud_run_v2_service.a2a_frontend \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
+          terraform init \
+            -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
+            -backend-config="prefix=${{ github.event.repository.name }}/${{ github.ref_name }}"
 
-      - name: Terraform Apply Frontend
-        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
+      - name: Terraform Apply
+        working-directory: deployment/terraform
         run: |
           terraform apply -auto-approve \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
+            -var="region=${{ env.REGION }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=${{ github.event.repository.name }}" \
             -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
-            -target=google_cloud_run_v2_service.a2a_frontend \
-            -target=google_cloud_run_v2_service_iam_member.frontend_invoker
-        working-directory: deployment/terraform
+            -var="agent_engine_id=${{ steps.prev_agent_id.outputs.AGENT_ENGINE_ID }}" \
+            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME || '' }}" \
+            -var="ge_app_staging=${{ vars.GE_APP_STAGING || '' }}" \
+            -var="ge_app_prod=${{ vars.GE_APP_PROD || '' }}"
 
-      # 10. Register Hosting Agent with Gemini Enterprise
-      # Requires GE_APP_STAGING and OAUTH_CLIENT_ID_SECRET_NAME environment variables to be set in GitHub
-      - name: Terraform Apply Gemini Enterprise Registration
-        if: steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID != '' && vars.GE_APP_STAGING != ''
+      # ── Get MCP URLs from Terraform outputs ────────────────────────────────
+
+      - name: Get MCP server URLs
+        id: mcp_urls
+        working-directory: deployment/terraform
         run: |
-          terraform apply -auto-approve \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID }}" \
-            -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
-            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
-            -var="agents_region=global" \
-            -target=module.gemini_enterprise_oauth \
-            -target=module.gemini_enterprise_agent_engine_register
-        working-directory: deployment/terraform
+          echo "CT_MCP_SERVER_URL=$(terraform output -raw cocktail_mcp_server_url)" >> $GITHUB_OUTPUT
+          echo "WEA_MCP_SERVER_URL=$(terraform output -raw weather_mcp_server_url)" >> $GITHUB_OUTPUT
 
-      # 11. Apply full Terraform if Terraform config changed
-      # Uses GE agent ID from step 7b if available; GE module self-skips when agent_engine_id=unset
-      - name: Terraform Apply All (if Terraform config changed)
-        if: steps.changes.outputs.terraform == 'true'
+      # ── Deploy Agents ───────────────────────────────────────────────────────
+
+      - name: Install Python dependencies
+        if: steps.changes.outputs.agents == 'true' || steps.changes.outputs.cocktail_mcp == 'true' || steps.changes.outputs.weather_mcp == 'true'
         run: |
-          terraform apply -auto-approve \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID || steps.agent_id.outputs.AGENT_ENGINE_ID || 'unset' }}" \
-            -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
-            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
-            -var="agents_region=global"
-        working-directory: deployment/terraform
+          uv venv
+          source .venv/bin/activate
+          uv pip install keyrings.google-artifactregistry-auth
+          uv pip install -e ".[agent-engine]" \
+            --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
+          uv pip install a2a-sdk google-adk --no-deps --target src/ \
+            --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
 
-      # 12. Output deployment summary
+      - name: Deploy A2A Agents
+        if: steps.changes.outputs.agents == 'true' || steps.changes.outputs.cocktail_mcp == 'true' || steps.changes.outputs.weather_mcp == 'true'
+        id: deploy_agents
+        env:
+          PROJECT_ID: ${{ env.PROJECT_ID }}
+          PROJECT_NUMBER: ${{ env.PROJECT_NUMBER }}
+          LOCATION: ${{ env.REGION }}
+          CT_MCP_SERVER_URL: ${{ steps.mcp_urls.outputs.CT_MCP_SERVER_URL }}
+          WEA_MCP_SERVER_URL: ${{ steps.mcp_urls.outputs.WEA_MCP_SERVER_URL }}
+        run: |
+          source .venv/bin/activate
+          python deployment/deploy_agents.py
+
+      # ── Publish agent_engine_id to Secret Manager ───────────────────────────
+      # The frontend reads this secret at container startup via the Python
+      # Secret Manager client (see src/frontend/main.py).
+
+      - name: Update agent engine ID in Secret Manager
+        if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
+        run: |
+          printf '%s' "${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" | \
+            gcloud secrets versions add agent-engine-id \
+              --project=${{ env.PROJECT_ID }} \
+              --data-file=-
+
+          # Re-deploy the frontend with the same image to create a new revision
+          # that starts up fresh and picks up the updated secret value.
+          FRONTEND_IMAGE=$(gcloud run services describe a2a-frontend-adk-mb \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || \
+            echo "gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb:latest")
+
+          gcloud run deploy a2a-frontend-adk-mb \
+            --image="${FRONTEND_IMAGE}" \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }}
+
+      # ── Summary ─────────────────────────────────────────────────────────────
+
       - name: Deployment Summary
-        if: always()
         run: |
-          echo "=== Deployment Summary ==="
-          echo "MCP Servers:"
-          echo "  Cocktail: ${{ steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' && 'DEPLOYED' || 'SKIPPED' }}"
-          echo "  Weather: ${{ steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' && 'DEPLOYED' || 'SKIPPED' }}"
-          echo "Agents: ${{ steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true' && 'DEPLOYED' || 'SKIPPED' }}"
-          echo "Frontend: ${{ steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' && 'DEPLOYED' || 'SKIPPED' }}"
-          echo "GE Registration: ${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID != '' && vars.GE_APP_STAGING != '' && 'APPLIED' || 'SKIPPED' }}"
-          echo ""
-          echo "Resource URLs:"
-          echo "  Cocktail MCP: ${{ steps.mcp_urls.outputs.CT_MCP_SERVER_URL }}"
-          echo "  Weather MCP: ${{ steps.mcp_urls.outputs.WEA_MCP_SERVER_URL }}"
-          echo "  Agent Engine ID: ${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}"
-
-  deploy-prod:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production
-    # Prevent concurrent deployments to production
-    concurrency:
-      group: deploy-production
-      cancel-in-progress: false
-    permissions:
-      contents: 'read'
-      id-token: 'write'
-
-    env:
-      PROJECT_ID: ${{ vars.PROJECT_ID }}
-      PROJECT_NUMBER: ${{ vars.PROJECT_NUMBER }}
-      WORKLOAD_IDENTITY_PROVIDER: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-      SERVICE_ACCOUNT: ${{ vars.SERVICE_ACCOUNT }}
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      # Detect which components have code changes
-      - name: Detect changed components
-        uses: dorny/paths-filter@v3
-        id: changes
-        with:
-          filters: |
-            cocktail_mcp:
-              - 'src/mcp_servers/cocktail_mcp_server/**'
-            weather_mcp:
-              - 'src/mcp_servers/weather_mcp_server/**'
-            agents:
-              - 'src/a2a_agents/**'
-              - 'deployment/deploy_agents.py'
-            frontend:
-              - 'src/frontend/**'
-              - '.github/workflows/deploy.yml'
-            terraform:
-              - 'deployment/terraform/**'
-
-      # 1. Authenticate to Google Cloud
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: '${{ env.WORKLOAD_IDENTITY_PROVIDER }}'
-          service_account: '${{ env.SERVICE_ACCOUNT }}'
-          project_id: '${{ env.PROJECT_ID }}'
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      # 2. Check if resources exist (for first-time deployment detection)
-      - name: Check existing resources
-        id: check_resources
-        run: |
-          # Check if MCP servers exist
-          COCKTAIL_EXISTS=$(gcloud run services describe cocktail-remote-mcp-server-adk-mb \
-            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
-            --format='value(name)' 2>/dev/null || echo "")
-          WEATHER_EXISTS=$(gcloud run services describe weather-remote-mcp-server-adk-mb \
-            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
-            --format='value(name)' 2>/dev/null || echo "")
-
-          # Check if agents exist
-          AGENT_EXISTS=$(curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-            "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=1" \
-            | jq -r '.reasoningEngines[]? | select(.displayName | ascii_downcase | contains("adk-mb")) | .name' | head -1 || echo "")
-
-          # Check if frontend exists
-          FRONTEND_EXISTS=$(gcloud run services describe a2a-frontend-adk-mb \
-            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
-            --format='value(name)' 2>/dev/null || echo "")
-
-          # Set flags
-          [ -z "$COCKTAIL_EXISTS" ] && echo "COCKTAIL_MCP_EXISTS=false" >> $GITHUB_OUTPUT || echo "COCKTAIL_MCP_EXISTS=true" >> $GITHUB_OUTPUT
-          [ -z "$WEATHER_EXISTS" ] && echo "WEATHER_MCP_EXISTS=false" >> $GITHUB_OUTPUT || echo "WEATHER_MCP_EXISTS=true" >> $GITHUB_OUTPUT
-          [ -z "$AGENT_EXISTS" ] && echo "AGENTS_EXIST=false" >> $GITHUB_OUTPUT || echo "AGENTS_EXIST=true" >> $GITHUB_OUTPUT
-          [ -z "$FRONTEND_EXISTS" ] && echo "FRONTEND_EXISTS=false" >> $GITHUB_OUTPUT || echo "FRONTEND_EXISTS=true" >> $GITHUB_OUTPUT
-
-          echo "Resource check:"
-          echo "  Cocktail MCP: $([ -z "$COCKTAIL_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
-          echo "  Weather MCP: $([ -z "$WEATHER_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
-          echo "  Agents: $([ -z "$AGENT_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
-          echo "  Frontend: $([ -z "$FRONTEND_EXISTS" ] && echo "NOT FOUND" || echo "EXISTS")"
-
-      # 3. Determine deployment flags based on changes and dependencies
-      - name: Set deployment flags
-        id: deploy_flags
-        run: |
-          # Deploy MCP servers if code changed OR if they don't exist (first-time deployment)
-          if [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
-             [ "${{ steps.check_resources.outputs.COCKTAIL_MCP_EXISTS }}" == "false" ]; then
-            echo "DEPLOY_COCKTAIL_MCP=true" >> $GITHUB_OUTPUT
-            echo "Will deploy Cocktail MCP (changed or doesn't exist)"
-          else
-            echo "DEPLOY_COCKTAIL_MCP=false" >> $GITHUB_OUTPUT
-          fi
-
-          if [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
-             [ "${{ steps.check_resources.outputs.WEATHER_MCP_EXISTS }}" == "false" ]; then
-            echo "DEPLOY_WEATHER_MCP=true" >> $GITHUB_OUTPUT
-            echo "Will deploy Weather MCP (changed or doesn't exist)"
-          else
-            echo "DEPLOY_WEATHER_MCP=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Deploy agents if:
-          # - Agent code changed, OR
-          # - Any MCP server changed, OR
-          # - Agents don't exist (first-time deployment)
-          if [ "${{ steps.changes.outputs.agents }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
-             [ "${{ steps.check_resources.outputs.AGENTS_EXIST }}" == "false" ]; then
-            echo "DEPLOY_AGENTS=true" >> $GITHUB_OUTPUT
-            echo "Will deploy Agents (changed, dependencies changed, or don't exist)"
-          else
-            echo "DEPLOY_AGENTS=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Deploy frontend if:
-          # - Frontend code changed, OR
-          # - Agents changed, OR
-          # - Frontend doesn't exist (first-time deployment)
-          if [ "${{ steps.changes.outputs.frontend }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.agents }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" ] || \
-             [ "${{ steps.changes.outputs.weather_mcp }}" == "true" ] || \
-             [ "${{ steps.check_resources.outputs.FRONTEND_EXISTS }}" == "false" ]; then
-            echo "DEPLOY_FRONTEND=true" >> $GITHUB_OUTPUT
-            echo "Will deploy Frontend (changed, dependencies changed, or doesn't exist)"
-          else
-            echo "DEPLOY_FRONTEND=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Check existing Agent Engines
-        id: check_agents
-        run: |
-          HOSTING_AGENT=$(curl -s \
-            -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-            "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines" \
-            | jq -r '.reasoningEngines[] | select(.displayName == "Hosting Agent ADK-MB") | .name' \
-            | head -1)
-          if [ -n "$HOSTING_AGENT" ]; then
-            echo "AGENTS_EXIST=true" >> $GITHUB_OUTPUT
-            echo "AGENT_ENGINE_ID=${HOSTING_AGENT}" >> $GITHUB_OUTPUT
-            echo "Agent engines already exist. Hosting Agent: ${HOSTING_AGENT}. Skipping deploy."
-          else
-            echo "AGENTS_EXIST=false" >> $GITHUB_OUTPUT
-            echo "No existing agent engines found. Will deploy."
-          fi
-
-      # 3. Build MCP Server Images (Terraform will deploy them)
-      - name: Build Cocktail MCP Server Image
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true'
-        run: |
-          echo "Building Cocktail MCP Server image..."
-          gcloud builds submit ./src/mcp_servers/cocktail_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb:latest \
-            --project ${{ env.PROJECT_ID }}
-
-      - name: Build Weather MCP Server Image
-        if: steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
-        run: |
-          echo "Building Weather MCP Server image..."
-          gcloud builds submit ./src/mcp_servers/weather_mcp_server \
-            --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb:latest \
-            --project ${{ env.PROJECT_ID }}
-
-      # 4. Deploy MCP Servers via Terraform (if images were built)
-      - name: Setup Terraform for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Ensure Terraform state bucket exists
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
-        run: |
-          gcloud storage buckets describe gs://${{ env.PROJECT_ID }}-terraform-state 2>/dev/null || \
-          gcloud storage buckets create gs://${{ env.PROJECT_ID }}-terraform-state \
-            --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }}
-
-      - name: Terraform Init for MCP Deployment
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true' || steps.changes.outputs.terraform == 'true' || vars.GE_APP_STAGING != ''
-        run: |
-          terraform init \
-            -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
-            -backend-config="prefix=${{ github.event.repository.name }}/prod"
-        working-directory: deployment/terraform
-
-      - name: Import existing MCP Cloud Run services
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
-        working-directory: deployment/terraform
-        run: |
-          terraform import \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=unset" \
-            google_cloud_run_v2_service.cocktail_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/cocktail-remote-mcp-server-adk-mb" 2>/dev/null || true
-
-          terraform import \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=unset" \
-            google_cloud_run_v2_service.weather_mcp_server \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/weather-remote-mcp-server-adk-mb" 2>/dev/null || true
-
-      - name: Terraform Apply MCP Servers
-        if: steps.deploy_flags.outputs.DEPLOY_COCKTAIL_MCP == 'true' || steps.deploy_flags.outputs.DEPLOY_WEATHER_MCP == 'true'
-        run: |
-          terraform apply -auto-approve \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=unset" \
-            -target=google_cloud_run_v2_service.cocktail_mcp_server \
-            -target=google_cloud_run_v2_service.weather_mcp_server \
-            -target=google_cloud_run_v2_service_iam_member.cocktail_mcp_compute_invoker \
-            -target=google_cloud_run_v2_service_iam_member.weather_mcp_compute_invoker
-        working-directory: deployment/terraform
-
-      # 5. Get MCP Server URLs (only if deploying agents)
-      - name: Get MCP Server URLs
-        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
-        id: mcp_urls
-        run: |
-          # Wait a few seconds for Cloud Run services to be fully ready
-          echo "Waiting for MCP services to be ready..."
-          sleep 10
-
-          # Get Cocktail MCP Server URL
-          CT_URL=$(gcloud run services describe cocktail-remote-mcp-server-adk-mb \
-            --region=${{ env.REGION }} \
-            --project=${{ env.PROJECT_ID }} \
-            --format='value(status.url)' 2>/dev/null || echo "")
-
-          if [ -z "$CT_URL" ]; then
-            echo "ERROR: Could not get Cocktail MCP Server URL"
-            echo "This might indicate the service failed to deploy. Check Cloud Run console."
-            exit 1
-          fi
-          echo "CT_MCP_SERVER_URL=${CT_URL}/mcp/sse" >> $GITHUB_OUTPUT
-          echo "Cocktail MCP Server URL: ${CT_URL}/mcp/sse"
-
-          # Get Weather MCP Server URL
-          WEA_URL=$(gcloud run services describe weather-remote-mcp-server-adk-mb \
-            --region=${{ env.REGION }} \
-            --project=${{ env.PROJECT_ID }} \
-            --format='value(status.url)' 2>/dev/null || echo "")
-
-          if [ -z "$WEA_URL" ]; then
-            echo "ERROR: Could not get Weather MCP Server URL"
-            echo "This might indicate the service failed to deploy. Check Cloud Run console."
-            exit 1
-          fi
-          echo "WEA_MCP_SERVER_URL=${WEA_URL}/mcp/sse" >> $GITHUB_OUTPUT
-          echo "Weather MCP Server URL: ${WEA_URL}/mcp/sse"
-
-      # 6. Deploy A2A Agents (when code changed or MCP servers updated)
-      - name: Set up Python
-        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install keyrings.google-artifactregistry-auth
-          .venv/bin/pip install -e . --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
-
-      - name: Run A2A Deploy Script
-        if: steps.deploy_flags.outputs.DEPLOY_AGENTS == 'true'
-        id: deploy_agents
-        env:
-          PROJECT_ID: ${{ env.PROJECT_ID }}
-          PROJECT_NUMBER: ${{ env.PROJECT_NUMBER }}
-          GOOGLE_CLOUD_REGION: ${{ env.REGION }}
-          CT_MCP_SERVER_URL: ${{ steps.mcp_urls.outputs.CT_MCP_SERVER_URL }}
-          WEA_MCP_SERVER_URL: ${{ steps.mcp_urls.outputs.WEA_MCP_SERVER_URL }}
-          PYTHONPATH: src
-        run: |
-          echo "Deploying agents with MCP Server URLs:"
-          echo "  Cocktail: $CT_MCP_SERVER_URL"
-          echo "  Weather: $WEA_MCP_SERVER_URL"
-          .venv/bin/pip install a2a-sdk google-adk --target src/ --no-deps --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
-          source .venv/bin/activate
-          python deployment/deploy_agents.py
-
-      # 7. Get Agent Engine ID for frontend and GE registration
-      - name: Get Agent Engine ID
-        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
-        id: agent_id
-        run: |
-          # Use newly deployed agent ID if available, otherwise find existing agent
+          echo "### Deployment Summary — ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Cocktail MCP | ${{ steps.changes.outputs.cocktail_mcp == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Weather MCP  | ${{ steps.changes.outputs.weather_mcp == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Agents       | ${{ steps.changes.outputs.agents == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend     | ${{ steps.changes.outputs.frontend == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Cocktail MCP URL:** ${{ steps.mcp_urls.outputs.CT_MCP_SERVER_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Weather MCP URL:** ${{ steps.mcp_urls.outputs.WEA_MCP_SERVER_URL }}" >> $GITHUB_STEP_SUMMARY
           if [ -n "${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" ]; then
-            AGENT_ID="${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}"
-            echo "Using newly deployed Agent Engine ID: $AGENT_ID"
-          else
-            # Wait for agents to be deployed
-            echo "Waiting for agents to be ready..."
-            sleep 10
-
-            AGENT_ID=$(curl -s \
-              -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-              "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
-              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
-              | head -1)
-
-            if [ -z "$AGENT_ID" ]; then
-              echo "ERROR: Could not find Hosting Agent"
-              echo "This might indicate the agent deployment failed. Check Agent Engine console."
-              exit 1
-            fi
-            echo "Using existing Agent Engine ID: $AGENT_ID"
+            echo "**Agent Engine ID:** ${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "AGENT_ENGINE_ID=$AGENT_ID" >> $GITHUB_OUTPUT
-
-      # 7b. Get Agent Engine ID for GE registration (soft-fail: skips GE if agent not found)
-      - name: Get Agent Engine ID for GE Registration
-        if: vars.GE_APP_STAGING != ''
-        id: ge_agent_id
-        run: |
-          # Prefer newly deployed agent ID; fall back to lookup of existing agent
-          if [ -n "${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" ]; then
-            echo "GE_AGENT_ENGINE_ID=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" >> $GITHUB_OUTPUT
-            echo "Using newly deployed Agent Engine ID: ${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}"
-          else
-            AGENT_ID=$(curl -s \
-              -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-              "https://${{ env.REGION }}-aiplatform.googleapis.com/v1beta1/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/reasoningEngines?pageSize=100" \
-              | jq -r '.reasoningEngines[]? | select(.displayName == "Hosting Agent ADK-MB") | .name' \
-              | head -1)
-            echo "GE_AGENT_ENGINE_ID=${AGENT_ID}" >> $GITHUB_OUTPUT
-            if [ -z "$AGENT_ID" ]; then
-              echo "WARNING: No Hosting Agent found. GE registration will be skipped."
-            else
-              echo "Using existing Agent Engine ID: $AGENT_ID"
-            fi
-          fi
-
-      # 8. Build Frontend Image (Terraform will deploy it)
-      - name: Build Frontend Image
-        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
-        run: |
-          echo "Building Frontend image..."
-          gcloud builds submit ./src/frontend \
-            --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb:latest \
-            --project ${{ env.PROJECT_ID }}
-
-      # 9. Deploy Frontend via Terraform (when frontend changed or after agent deployment)
-      - name: Import Frontend Cloud Run service
-        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
-        working-directory: deployment/terraform
-        run: |
-          terraform import \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
-            google_cloud_run_v2_service.a2a_frontend \
-            "projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/services/a2a-frontend-adk-mb" 2>/dev/null || true
-
-      - name: Terraform Apply Frontend
-        if: steps.deploy_flags.outputs.DEPLOY_FRONTEND == 'true'
-        run: |
-          terraform apply -auto-approve \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
-            -target=google_cloud_run_v2_service.a2a_frontend \
-            -target=google_cloud_run_v2_service_iam_member.frontend_invoker
-        working-directory: deployment/terraform
-
-      # 10. Register Hosting Agent with Gemini Enterprise
-      # Requires GE_APP_STAGING and OAUTH_CLIENT_ID_SECRET_NAME environment variables to be set in GitHub
-      - name: Terraform Apply Gemini Enterprise Registration
-        if: steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID != '' && vars.GE_APP_STAGING != ''
-        run: |
-          terraform apply -auto-approve \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID }}" \
-            -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
-            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
-            -var="agents_region=global" \
-            -target=module.gemini_enterprise_oauth \
-            -target=module.gemini_enterprise_agent_engine_register
-        working-directory: deployment/terraform
-
-      # 11. Apply full Terraform if Terraform config changed
-      # Uses GE agent ID from step 7b if available; GE module self-skips when agent_engine_id=unset
-      - name: Terraform Apply All (if Terraform config changed)
-        if: steps.changes.outputs.terraform == 'true'
-        run: |
-          terraform apply -auto-approve \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=${{ steps.ge_agent_id.outputs.GE_AGENT_ENGINE_ID || steps.agent_id.outputs.AGENT_ENGINE_ID || 'unset' }}" \
-            -var="ge_app_staging=${{ vars.GE_APP_STAGING }}" \
-            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME }}" \
-            -var="agents_region=global"
-        working-directory: deployment/terraform

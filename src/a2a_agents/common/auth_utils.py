@@ -14,7 +14,7 @@
 """Shared authentication utilities for Google Cloud services."""
 
 import logging
-from typing import Generator
+from collections.abc import Generator
 
 import httpx
 from google.auth import default

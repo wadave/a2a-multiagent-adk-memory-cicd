@@ -16,14 +16,9 @@
 import asyncio
 import logging
 import os
-import subprocess
-from dotenv import load_dotenv
 
 import httpx
 import vertexai
-from google.genai import types
-
-from a2a.client import ClientConfig, ClientFactory
 from a2a.types import (
     Message,
     Part,
@@ -32,12 +27,16 @@ from a2a.types import (
     TextPart,
     TransportProtocol,
 )
+from dotenv import load_dotenv
+from google.genai import types
+
+from a2a.client import ClientConfig, ClientFactory
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
 
 
-from tests import test_config
+from tests import test_config  # noqa: E402
 
 
 def get_bearer_token():

@@ -14,6 +14,7 @@
 """Centralized configuration for A2A integration tests."""
 
 import os
+
 from dotenv import load_dotenv
 
 # Ensure environment variables are loaded for tests

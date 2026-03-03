@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Test the deployed Gradio frontend on Cloud Run."""
 
+
 import requests
-import time
 
 FRONTEND_URL = "https://a2a-frontend-496235138247.us-central1.run.app"
 
@@ -38,7 +38,7 @@ def test_frontend_health():
 
 def test_gradio_api():
     """Test Gradio API endpoint."""
-    print(f"\nTesting Gradio API...")
+    print("\nTesting Gradio API...")
 
     try:
         # Gradio exposes a /config endpoint

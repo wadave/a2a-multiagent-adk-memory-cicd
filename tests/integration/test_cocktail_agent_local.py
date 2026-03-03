@@ -13,23 +13,24 @@
 # limitations under the License.
 # Author: Dave Wang
 
+import asyncio
+import json
 import os
 import sys
-import json
-import logging
-import asyncio
-from typing import Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from starlette.requests import Request
-from dotenv import load_dotenv
 
 from tests import test_config
 
 # Add src to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from a2a_agents.cocktail_agent.cocktail_agent_card import cocktail_agent_card
-from a2a_agents.cocktail_agent.agent_executor import CocktailAgentExecutor
 from vertexai.preview.reasoning_engines import A2aAgent
+
+from a2a_agents.cocktail_agent.agent_executor import CocktailAgentExecutor
+from a2a_agents.cocktail_agent.cocktail_agent_card import cocktail_agent_card
 
 
 # Helpers from notebook

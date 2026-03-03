@@ -39,7 +39,7 @@ def setup_cloud_logging(log_name: str | None = None) -> None:
         client = google.cloud.logging.Client(project=project_id)
         # Setup standard Python logging to send logs to Cloud Logging
         handler = CloudLoggingHandler(client, name=log_name)
-        
+
         # Prevent duplicate handlers
         root_logger = logging.getLogger()
         if any(isinstance(h, CloudLoggingHandler) for h in root_logger.handlers):

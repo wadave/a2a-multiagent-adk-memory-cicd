@@ -19,7 +19,6 @@ import logging
 import uuid
 
 import httpx
-from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a.types import (
     AgentCard,
     DataPart,
@@ -32,15 +31,17 @@ from a2a.types import (
     TransportProtocol,
 )
 from dotenv import load_dotenv
-from google import adk
-from google.adk import Agent
-from google.adk.models import Gemini
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents.readonly_context import ReadonlyContext
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
+
+from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a_agents.common.agent_configs import DEFAULT_MODEL
 from a2a_agents.common.remote_connection import RemoteAgentConnections, TaskUpdateCallback
+from google import adk
+from google.adk import Agent
+from google.adk.models import Gemini
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ class AdkOrchestratorAgent:
         # Use asyncio.gather for Python 3.10 compatibility (TaskGroup is 3.11+)
         tasks = [self.retrieve_card(address) for address in remote_agent_addresses]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Log any individual failures but keep the others
         for addr, res in zip(remote_agent_addresses, results):
             if isinstance(res, Exception):

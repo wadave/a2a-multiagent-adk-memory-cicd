@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # Author: Dave Wang
-from a2a_agents.common.adk_orchestrator_agent_executor import AdkOrchestratorAgentExecutor
 import logging
 import os
+
 from dotenv import load_dotenv
+
+from a2a_agents.common.adk_orchestrator_agent_executor import AdkOrchestratorAgentExecutor
 
 # Set logging
 logging.getLogger().setLevel(logging.INFO)

@@ -15,7 +15,6 @@
 import logging
 from collections.abc import Callable
 
-from a2a.client import Client, ClientFactory
 from a2a.types import (
     AgentCard,
     Message,
@@ -24,6 +23,8 @@ from a2a.types import (
     TaskState,
     TaskStatusUpdateEvent,
 )
+
+from a2a.client import Client, ClientFactory
 
 logger = logging.getLogger(__name__)
 

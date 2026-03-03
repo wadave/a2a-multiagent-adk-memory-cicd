@@ -37,7 +37,7 @@ The application features a Host Agent coordinating tasks between specialized rem
 
 ![architecture](assets/a2a-ae-armor.png)
 
-System Diagram::
+System Diagram:
 ```mermaid
 graph TD
     User((User)) -->|HTTPS| CustomUI[Gradio Frontend]
@@ -96,7 +96,7 @@ We strongly recommend using the automated CI/CD pipeline for deploying this infr
 
 > ⚠️ Step 4 is the most commonly missed step. The pipeline will fail at authentication if these variables are not set.
 
-Follow the **[CI/CD Setup Guide](cicd-setup.md)** for full instructions and copy-paste commands.
+Follow the **[CI/CD Setup Guide](docs/cicd-setup.md)** for full instructions and copy-paste commands.
 
 Once configured, pushing to `staging` or `main` automatically triggers the pipeline — it detects which components changed and only deploys what's needed.
 
@@ -154,23 +154,28 @@ The application leverages **Google Cloud Logging** to provide structured, centra
 
 ## Testing & Quality Assurance
 
-We maintain rigorous testing standards across the application. For detailed instructions on running evaluations and load tests, refer to our [Testing Summary](TESTING_SUMMARY.md).
+We maintain rigorous testing standards across the application. For detailed instructions on running evaluations and load tests, refer to our [Testing Summary](tests/TESTING_SUMMARY.md).
 
 ```bash
-# Run unit tests locally
+# Run all unit tests
 pytest tests/unit/ -v
 
-# Run integration tests against deployed agents
-python tests/integration/test_hosting_agent_remote.py
+# Run unit + non-integration tests (single command)
+pytest tests/unit/ tests/eval/ -v
+
+# Lint and format check
+ruff check .
+ruff format --check .
+
+# Integration tests (require deployed services — set env vars first)
+pytest tests/integration/ -m integration -v
 ```
 
 ## Additional Documentation
 
-- 📘 [CI/CD Setup Guide](cicd-setup.md)
-- 📘 [Testing Summary](TESTING_SUMMARY.md)
-- 📘 [Migration Guide](MIGRATION_GUIDE.md)
-- 📘 [Frontend Deployment Summary](FRONTEND_DEPLOYMENT_SUMMARY.md)
-- 📘 [Reorganization Summary](REORGANIZATION_SUMMARY.md)
+- 📘 [CI/CD Setup Guide](docs/cicd-setup.md)
+- 📘 [Testing Summary](tests/TESTING_SUMMARY.md)
+- 📘 [Software Design](docs/software_design.md)
 
 ## Disclaimer
 

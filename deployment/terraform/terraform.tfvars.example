@@ -1,0 +1,47 @@
+# ==============================================================================
+# Terraform Variables — copy this file to terraform.tfvars and fill in values.
+# terraform.tfvars is gitignored; never commit secret or project-specific data.
+# ==============================================================================
+
+# GCP project ID where all resources are deployed.
+deploy_project_id = "your-gcp-project-id"
+
+# GCP project ID where CI/CD runners execute (often the same as deploy_project_id).
+cicd_runner_project_id = "your-gcp-project-id"
+
+# GCP project number (numeric, e.g. 123456789012).
+project_number = "your-project-number"
+
+# GCP region for Cloud Run services and Terraform state bucket.
+region = "us-central1"
+
+# GitHub repository name (without owner prefix).
+repository_name = "a2a-multiagent-adk-memory-cicd"
+
+# GitHub repository owner (your GitHub username or org).
+repository_owner = "your-github-username"
+
+# ============================================================================
+# Optional: Gemini Enterprise integration
+# Leave blank to skip GE registration.
+# ============================================================================
+
+# Name of the Secret Manager secret containing the OAuth client credentials JSON.
+# oauth_client_id_secret_name = "client_secret"
+
+# Gemini Enterprise App ID for the staging environment.
+# ge_app_staging = ""
+
+# Gemini Enterprise App ID for the production environment.
+# ge_app_prod = ""
+
+# Region/scope for the Gemini Enterprise Discovery Engine API.
+# agents_region = "global"
+
+# Unique ID for the Gemini Enterprise OAuth authorization account.
+# auth_id = "a2a_adk_mb_oauth_token_v1"
+
+# ============================================================================
+# Set by CI/CD after first agent deployment — do not set manually.
+# ============================================================================
+# agent_engine_id = "projects/123456789012/locations/us-central1/reasoningEngines/12345"

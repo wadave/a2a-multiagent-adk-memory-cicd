@@ -19,7 +19,6 @@ import logging
 import os
 import random
 import time
-from typing import List
 
 from locust import HttpUser, between, task
 
@@ -147,7 +146,7 @@ class HostingAgentUser(HttpUser):
                 if response.status_code == 200:
                     events = []
                     has_error = False
-                    response_data = {}
+                    response_data: dict = {}
 
                     for line in response.iter_lines():
                         if line:
@@ -164,7 +163,7 @@ class HostingAgentUser(HttpUser):
                             try:
                                 event_data = json.loads(line_str)
                                 if isinstance(event_data, dict):
-                                    response_data = event_data
+                                    response_data = event_data  # noqa: F841
 
                                     # Check for errors
                                     if (

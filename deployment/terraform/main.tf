@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.9.0"
 
   required_providers {
     google = {
@@ -13,4 +13,3 @@ provider "google" {
   project = var.cicd_runner_project_id
   region  = var.region
 }
-# test trigger

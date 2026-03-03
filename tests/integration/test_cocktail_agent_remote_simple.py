@@ -14,19 +14,19 @@
 # Author: Dave Wang
 
 import asyncio
+import json
 import logging
 import os
-import json
-from dotenv import load_dotenv
 
 import vertexai
+from dotenv import load_dotenv
 from google.genai import types
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
 
 
-from tests import test_config
+from tests import test_config  # noqa: E402
 
 
 async def test_remote_cocktail_agent():

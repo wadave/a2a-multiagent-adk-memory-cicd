@@ -13,14 +13,14 @@
 # limitations under the License.
 # Author: Dave Wang
 
+import asyncio
 import logging
 import os
-from typing import Any, Dict, Optional
+from contextlib import asynccontextmanager
+from typing import Any
+
 import httpx
 from fastmcp import FastMCP
-import asyncio
-
-from contextlib import asynccontextmanager
 
 # Setup logging - name matches server name
 logger = logging.getLogger("cocktail-mcp-server")
@@ -51,8 +51,8 @@ http_client = httpx.AsyncClient(base_url=API_BASE_URL, timeout=30.0)
 
 
 async def make_cocktaildb_request(
-    endpoint: str, params: Optional[Dict[str, str]] = None
-) -> Optional[Dict[str, Any]]:
+    endpoint: str, params: dict[str, str] | None = None
+) -> dict[str, Any] | None:
     """Makes a request to TheCocktailDB API using the shared client."""
     # Use the shared http_client, don't create a new one.
     try:
@@ -78,7 +78,7 @@ async def make_cocktaildb_request(
         return None
 
 
-def format_cocktail_summary(drink: Dict[str, Any]) -> str:
+def format_cocktail_summary(drink: dict[str, Any]) -> str:
     """Formats a cocktail dictionary into a readable summary string."""
     return (
         f"ID: {drink.get('idDrink', 'N/A')}\n"
@@ -91,7 +91,7 @@ def format_cocktail_summary(drink: Dict[str, Any]) -> str:
     )
 
 
-def format_cocktail_details(drink: Dict[str, Any]) -> str:
+def format_cocktail_details(drink: dict[str, Any]) -> str:
     """Formats a cocktail dictionary into a detailed readable string."""
     details = [
         f"ID: {drink.get('idDrink', 'N/A')}",
@@ -122,7 +122,7 @@ def format_cocktail_details(drink: Dict[str, Any]) -> str:
     return "\n".join(details)
 
 
-def format_ingredient(ingredient: Dict[str, Any]) -> str:
+def format_ingredient(ingredient: dict[str, Any]) -> str:
     """Formats an ingredient dictionary into a readable string."""
     desc = ingredient.get("strDescription", "No description available.")
     return (

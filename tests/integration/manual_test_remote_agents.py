@@ -1,7 +1,6 @@
-import os
 import vertexai
-from google.genai import types
 from dotenv import load_dotenv
+from google.genai import types
 
 from tests import test_config
 

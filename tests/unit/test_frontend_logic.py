@@ -14,8 +14,9 @@
 """Unit tests for frontend logic."""
 
 import os
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 class TestGoogleAuthClass:
@@ -99,6 +100,7 @@ class TestEnvironmentConfiguration:
         """Verify environment variables are loaded correctly."""
         # Force reload of main module to pick up environment
         import importlib
+
         import frontend.main
 
         importlib.reload(frontend.main)
@@ -112,6 +114,7 @@ class TestEnvironmentConfiguration:
     def test_default_location_used(self):
         """Verify default location is used when not specified."""
         import importlib
+
         import frontend.main
 
         importlib.reload(frontend.main)
@@ -211,6 +214,7 @@ class TestResourceNameConstruction:
     def test_resource_name_format(self):
         """Verify resource name is properly formatted."""
         import importlib
+
         import frontend.main
 
         importlib.reload(frontend.main)

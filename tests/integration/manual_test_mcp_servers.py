@@ -1,10 +1,10 @@
 import asyncio
-import os
-import httpx
-import google.auth.transport.requests
-from google.oauth2 import id_token
-from fastmcp import Client
 import subprocess
+
+import google.auth.transport.requests
+import httpx
+from fastmcp import Client
+from google.oauth2 import id_token
 
 # MCP Server URLs - Updated to match your project's running services
 # Added trailing slash to avoid potential redirects that strip auth headers

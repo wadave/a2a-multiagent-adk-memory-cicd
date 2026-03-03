@@ -18,26 +18,25 @@ from abc import ABC, abstractmethod
 from typing import NoReturn
 
 import httpx
+from a2a.types import Role, TaskState, TextPart, UnsupportedOperationError
+from a2a.utils.errors import ServerError
 from aiobreaker import CircuitBreaker, CircuitBreakerError
+from dotenv import load_dotenv
+from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
+from google.genai import types
 
 # A2A
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
-from a2a.types import Role, TaskState, TextPart, UnsupportedOperationError
 from a2a.utils import new_agent_text_message
-from a2a.utils.errors import ServerError
-from dotenv import load_dotenv
-from google.adk import Runner
-from google.adk.artifacts import InMemoryArtifactService
-from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
-from google.adk.sessions import InMemorySessionService, VertexAiSessionService
-from google.genai import types
-
+from a2a_agents.common.adk_base_mcp_agent_executor import PersistentVertexAiMemoryBankService
 from a2a_agents.common.adk_orchestrator_agent import get_orchestrator_agent
 from a2a_agents.common.auth_utils import GoogleAuth
-from a2a_agents.common.adk_base_mcp_agent_executor import PersistentVertexAiMemoryBankService
 from a2a_agents.common.logging_utils import setup_cloud_logging
+from google.adk import Runner
+from google.adk.artifacts import InMemoryArtifactService
+from google.adk.sessions import InMemorySessionService, VertexAiSessionService
 
 # Set logging
 logging.getLogger().setLevel(logging.INFO)
@@ -67,7 +66,7 @@ class CircuitBreakerTransport(httpx.AsyncBaseTransport):
                 if getattr(response, "status_code", 200) >= 500:
                     response.raise_for_status()
                 return response
-                
+
             return await _make_request()
         except CircuitBreakerError:
             logging.warning(f"Circuit Breaker OPEN. Fast-failing request to {request.url}")
@@ -129,7 +128,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         if self.agent_engine_id is None:
             # Check environment variable first (may be set on Vertex AI or during deploy)
             self.agent_engine_id = os.environ.get("AGENT_ENGINE_ID")
-            
+
             # If still None, we don't auto-create here to avoid resource leaks
             # during local instantiation/deployment. We'll fallback to in-memory
             # services in _init_agent if no ID is available.
@@ -216,7 +215,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         # Initialize agent on first call
         if self.agent is None or self.runner is None:
             await self._init_agent()
-        
+
         # Ensure we have a runner and agent after init
         if not self.runner or not self.agent:
             raise ServerError(message="Agent executor failed to initialize")
@@ -254,7 +253,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             # Run the agent asynchronously
             # This may involve multiple LLM calls and tool uses
             answer_sent = False
-            
+
             # self.runner is guaranteed to be not None here due to check above
             # but we use a local variable to satisfy the linter
             runner = self.runner
@@ -352,11 +351,11 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             if ":" in user_email:
                 return user_email.split(":")[-1]
             return user_email
-        
+
         user_id = headers.get("x-goog-authenticated-user-id")
         if user_id:
             return user_id
-            
+
         return "user"  # Fallback to default if not authenticated or not provided
 
     def _extract_answer(self, event) -> str:

@@ -1,6 +1,21 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import logging
 import os
 import sys
-import logging
+import tomllib
+
 from dotenv import load_dotenv
 
 # Add src to path for packaging logic so that a2a_agents are importable
@@ -10,16 +25,22 @@ import vertexai
 from google.genai import types
 from vertexai.preview.reasoning_engines import A2aAgent
 
-from a2a_agents.cocktail_agent.cocktail_agent_card import cocktail_agent_card
 from a2a_agents.cocktail_agent.agent_executor import CocktailAgentExecutor
-
-from a2a_agents.weather_agent.weather_agent_card import weather_agent_card
-from a2a_agents.weather_agent.agent_executor import WeatherAgentExecutor
-
-from a2a_agents.hosting_agent.hosting_agent_card import hosting_agent_card
+from a2a_agents.cocktail_agent.cocktail_agent_card import cocktail_agent_card
 from a2a_agents.hosting_agent.agent_executor import HostingAgentExecutor
+from a2a_agents.hosting_agent.hosting_agent_card import hosting_agent_card
+from a2a_agents.weather_agent.agent_executor import WeatherAgentExecutor
+from a2a_agents.weather_agent.weather_agent_card import weather_agent_card
 
 logging.basicConfig(level=logging.INFO)
+
+
+def get_agent_engine_requirements() -> list[str]:
+    """Read agent-engine requirements from pyproject.toml dynamically."""
+    pyproject_path = os.path.join(os.path.dirname(__file__), "..", "pyproject.toml")
+    with open(pyproject_path, "rb") as f:
+        data = tomllib.load(f)
+    return data.get("project", {}).get("optional-dependencies", {}).get("agent-engine", [])
 
 
 def find_existing_agent(client, display_name):
@@ -53,13 +74,12 @@ def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, p
 
     logging.info(f"Deploying {agent_name} to Agent Engine...")
 
-    # Ensure "a2a_agents" is always included in extra_packages
     if "a2a_agents" not in extra_packages:
         extra_packages.append("a2a_agents")
-        
+
     if os.path.exists("a2a") and "a2a" not in extra_packages:
         extra_packages.append("a2a")
-        
+
     if os.path.exists("google") and "google" not in extra_packages:
         extra_packages.append("google")
 
@@ -67,15 +87,7 @@ def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, p
         "display_name": agent.agent_card.name,
         "description": agent.agent_card.description,
         "service_account": f"{project_number}-compute@developer.gserviceaccount.com",
-        "requirements": [
-            "google-cloud-aiplatform[agent_engines,adk]==1.137.0",
-            "google-genai==1.63.0",
-            "pydantic==2.12.5",
-            "cloudpickle==3.1.2",
-            "python-dotenv>=1.2.1",
-            "google-cloud-logging>=3.11.0",
-            "aiobreaker>=1.2.0",
-        ],
+        "requirements": get_agent_engine_requirements(),
         "http_options": {
             "base_url": f"https://{location}-aiplatform.googleapis.com",
             "api_version": "v1beta1",
@@ -85,7 +97,6 @@ def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, p
         "extra_packages": extra_packages
     }
 
-    # Check if agent already exists
     existing_name = find_existing_agent(client, agent.agent_card.name)
     if existing_name:
         logging.info(f"Agent '{agent.agent_card.name}' already exists. Updating...")
@@ -101,7 +112,7 @@ def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, p
         agent=agent,
         config=config
     )
-    
+
     # Fix backend bug: Vertex AI ignores displayName on creation, so we update it immediately.
     try:
         client.agent_engines.update(
@@ -120,7 +131,7 @@ def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, p
 
 
 def main():
-    # Change current working directory to src so extra_packages path resolves correctly in Reasoning Engine
+    # Change working directory to src so extra_packages path resolves correctly in Reasoning Engine
     src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../src"))
     os.chdir(src_dir)
     logging.info(f"Changed working directory to {src_dir}")
@@ -155,7 +166,6 @@ def main():
 
     deployed_agents = {}
 
-    # Deploy Cocktail Agent
     try:
         ct_agent_name = deploy_agent(
             client,
@@ -177,7 +187,6 @@ def main():
         logging.error(f"Failed to deploy Cocktail Agent: {e}")
         sys.exit(1)
 
-    # Deploy Weather Agent
     try:
         wea_agent_name = deploy_agent(
             client,
@@ -199,12 +208,9 @@ def main():
         logging.error(f"Failed to deploy Weather Agent: {e}")
         sys.exit(1)
 
-    # Build URL endpoints for the agents based on their resource name
-    # Use /a2a endpoint for A2A protocol communication
     ct_agent_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{ct_agent_name}/a2a"
     wea_agent_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{wea_agent_name}/a2a"
 
-    # Deploy Hosting Agent
     try:
         host_agent_name = deploy_agent(
             client,
@@ -228,13 +234,13 @@ def main():
         sys.exit(1)
 
     logging.info("All agents deployed successfully.")
-    
-    # Export the Hosting Agent ID to GITHUB_OUTPUT for the Frontend Cloud Run deployment
+
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
         with open(github_output, "a") as f:
             f.write(f"AGENT_ENGINE_ID={host_agent_name}\n")
         logging.info("Exported AGENT_ENGINE_ID to GITHUB_OUTPUT.")
+
 
 if __name__ == "__main__":
     main()

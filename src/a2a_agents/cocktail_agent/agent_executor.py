@@ -14,11 +14,11 @@
 # Author: Dave Wang
 
 import logging
-from typing import Dict
+
 from dotenv import load_dotenv
 
-from a2a_agents.common.agent_configs import COCKTAIL_AGENT_CONFIG
 from a2a_agents.common.adk_base_mcp_agent_executor import AdkBaseMcpAgentExecutor
+from a2a_agents.common.agent_configs import COCKTAIL_AGENT_CONFIG
 
 # Set logging
 logging.getLogger().setLevel(logging.INFO)
@@ -28,7 +28,7 @@ load_dotenv()
 class CocktailAgentExecutor(AdkBaseMcpAgentExecutor):
     """Agent Executor for cocktail-related queries using MCP tools."""
 
-    def get_agent_config(self) -> Dict:
+    def get_agent_config(self) -> dict:
         """Return cocktail agent configuration."""
         return COCKTAIL_AGENT_CONFIG
 
