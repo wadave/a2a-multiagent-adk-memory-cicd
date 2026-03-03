@@ -204,20 +204,22 @@ jobs:
           echo "WEA_MCP_SERVER_URL=$(terraform output -raw weather_mcp_server_url)" >> $GITHUB_OUTPUT
 
       # ── Deploy Agents ───────────────────────────────────────────────────────
+      # No paths-filter guard: agent deployment runs on every push.
+      # paths-filter only covers the current push; if agent code changed in a
+      # prior push that failed or was skipped, those changes are invisible to
+      # the filter on the next push.  deploy_agents.py is idempotent — it
+      # updates existing Agent Engines and creates new ones — so always running
+      # it is safe and guarantees the deployed code is in sync with HEAD.
 
       - name: Install Python dependencies
-        if: steps.flags.outputs.agents == 'true'
         run: |
           uv venv
           source .venv/bin/activate
           uv pip install keyrings.google-artifactregistry-auth
           uv pip install -e ".[agent-engine]" \
             --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
-          uv pip install a2a-sdk google-adk --no-deps --target src/ \
-            --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
 
       - name: Deploy A2A Agents
-        if: steps.flags.outputs.agents == 'true'
         id: deploy_agents
         env:
           PROJECT_ID: ${{ env.PROJECT_ID }}
@@ -289,7 +291,7 @@ jobs:
           echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Cocktail MCP | ${{ steps.flags.outputs.cocktail_mcp == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Weather MCP  | ${{ steps.flags.outputs.weather_mcp == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Agents       | ${{ steps.flags.outputs.agents == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Agents       | Updated (always) |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend     | ${{ steps.flags.outputs.frontend == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Cocktail MCP URL:** ${{ steps.mcp_urls.outputs.CT_MCP_SERVER_URL }}" >> $GITHUB_STEP_SUMMARY

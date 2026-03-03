@@ -250,6 +250,11 @@ scratch
 tmp*
 /tmp
 
+# Packages installed into src/ by deploy_agents.py via `uv pip install --target src/`
+# These are generated at CI/CD time and must never be committed.
+src/a2a/
+src/google/
+
 # Configuration to ignore
 .pre-commit-config.yaml
 .requirements.txt

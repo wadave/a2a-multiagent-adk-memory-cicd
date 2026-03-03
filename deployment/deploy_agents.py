@@ -77,11 +77,19 @@ def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, p
     if "a2a_agents" not in extra_packages:
         extra_packages.append("a2a_agents")
 
-    if os.path.exists("a2a") and "a2a" not in extra_packages:
-        extra_packages.append("a2a")
+    import importlib.util
 
-    if os.path.exists("google") and "google" not in extra_packages:
-        extra_packages.append("google")
+    a2a_spec = importlib.util.find_spec("a2a")
+    if a2a_spec and a2a_spec.submodule_search_locations:
+        a2a_path = a2a_spec.submodule_search_locations[0]
+        if a2a_path not in extra_packages:
+            extra_packages.append(a2a_path)
+
+    google_spec = importlib.util.find_spec("google")
+    if google_spec and google_spec.submodule_search_locations:
+        google_path = google_spec.submodule_search_locations[0]
+        if google_path not in extra_packages:
+            extra_packages.append(google_path)
 
     config = {
         "display_name": agent.agent_card.name,
