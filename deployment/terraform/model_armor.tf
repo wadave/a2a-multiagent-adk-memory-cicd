@@ -18,19 +18,26 @@ resource "google_project_service" "modelarmor_api" {
   disable_on_destroy = false
 }
 
+# IAM propagation can take 60-120 s after the API returns success.
+# With a single terraform apply all IAM members and this provisioner run
+# in the same plan, so we must wait long enough before attempting the
+# gcloud call.  120 s covers the documented worst-case propagation time
+# for most regions; the retry loop below adds another 3 minutes of buffer.
 resource "time_sleep" "wait_for_modelarmor_admin_iam" {
-  create_duration = "30s"
+  create_duration = "120s"
 
   depends_on = [
     google_project_iam_member.github_runner_modelarmor_admin,
     google_project_iam_member.github_runner_serviceusage_consumer,
+    google_project_iam_member.github_runner_token_accessor,
+    google_project_service.modelarmor_api,
   ]
 }
 
 resource "null_resource" "model_armor_floor_settings" {
   provisioner "local-exec" {
     command = <<EOT
-      for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+      for i in $(seq 1 18); do
         if gcloud model-armor floorsettings update \
           --full-uri=projects/${var.deploy_project_id}/locations/global/floorSetting \
           --enable-floor-setting-enforcement=TRUE \
@@ -45,7 +52,7 @@ resource "null_resource" "model_armor_floor_settings" {
           echo "Successfully updated floor settings"
           exit 0
         fi
-        echo "Waiting for IAM permissions to propagate... (Attempt $i/12)"
+        echo "Waiting for IAM permissions to propagate... (Attempt $i/18)"
         sleep 10
       done
       echo "Failed to update floor settings after multiple attempts"
@@ -54,7 +61,6 @@ resource "null_resource" "model_armor_floor_settings" {
   }
 
   depends_on = [
-    google_project_service.modelarmor_api,
-    time_sleep.wait_for_modelarmor_admin_iam
+    time_sleep.wait_for_modelarmor_admin_iam,
   ]
 }

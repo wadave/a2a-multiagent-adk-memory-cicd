@@ -29,6 +29,7 @@ The application features a Host Agent coordinating tasks between specialized rem
 - **Cloud Logging**: Integrated Google Cloud Logging for unified observability
 - **CI/CD Pipeline**: Automated deployment using GitHub Actions and Terraform
 - **Resiliency**: Custom Circuit Breaker for robust external communication
+- **Reliability**: Automatic HTTP retry implementation for robust Gemini LLM calls
 - **Threat Protection**: Google Cloud Model Armor integration for Vertex AI LLM calls
 
 ## Architecture
