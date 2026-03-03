@@ -34,8 +34,14 @@ dependencies = [
 
 [package.optional-dependencies]
 agent-engine = [
+    { name = "a2a-sdk" },
     { name = "aiobreaker" },
+    { name = "click" },
     { name = "cloudpickle" },
+    { name = "geopy" },
+    { name = "google-adk" },
+    { name = "google-auth" },
+    { name = "google-auth-oauthlib" },
     { name = "google-cloud-aiplatform", extra = ["adk", "agent-engines"] },
     { name = "google-cloud-logging" },
     { name = "google-genai" },
@@ -53,16 +59,22 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "a2a-sdk", specifier = ">=0.3.5", index = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" },
+    { name = "a2a-sdk", specifier = ">=0.3.5" },
+    { name = "a2a-sdk", marker = "extra == 'agent-engine'", specifier = ">=0.3.5" },
     { name = "aiobreaker", specifier = ">=1.2.0" },
     { name = "aiobreaker", marker = "extra == 'agent-engine'", specifier = ">=1.2.0" },
     { name = "click", specifier = ">=8.2.1" },
+    { name = "click", marker = "extra == 'agent-engine'", specifier = ">=8.2.1" },
     { name = "cloudpickle", marker = "extra == 'agent-engine'", specifier = ">=3.1.0" },
     { name = "fastmcp", marker = "extra == 'dev'", specifier = ">=2.8.0" },
     { name = "geopy", specifier = ">=2.4.1" },
-    { name = "google-adk", specifier = ">=1.14.1", index = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/" },
-    { name = "google-auth", extras = ["openid"], specifier = ">=2.40.3" },
+    { name = "geopy", marker = "extra == 'agent-engine'", specifier = ">=2.4.1" },
+    { name = "google-adk", specifier = ">=1.14.1" },
+    { name = "google-adk", marker = "extra == 'agent-engine'", specifier = ">=1.14.1" },
+    { name = "google-auth", specifier = ">=2.40.3" },
+    { name = "google-auth", marker = "extra == 'agent-engine'", specifier = ">=2.40.3" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.2" },
+    { name = "google-auth-oauthlib", marker = "extra == 'agent-engine'", specifier = ">=1.2.2" },
     { name = "google-cloud-aiplatform", specifier = ">=1.113.0" },
     { name = "google-cloud-aiplatform", extras = ["agent-engines", "adk"], marker = "extra == 'agent-engine'", specifier = ">=1.113.0" },
     { name = "google-cloud-logging", specifier = ">=3.11.0" },

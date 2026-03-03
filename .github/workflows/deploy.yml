@@ -213,11 +213,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          uv venv
-          source .venv/bin/activate
-          uv pip install keyrings.google-artifactregistry-auth
-          uv pip install -e ".[agent-engine]" \
-            --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
+          uv sync --locked --extra agent-engine
 
       - name: Deploy A2A Agents
         id: deploy_agents
@@ -228,8 +224,7 @@ jobs:
           CT_MCP_SERVER_URL: ${{ steps.mcp_urls.outputs.CT_MCP_SERVER_URL }}
           WEA_MCP_SERVER_URL: ${{ steps.mcp_urls.outputs.WEA_MCP_SERVER_URL }}
         run: |
-          source .venv/bin/activate
-          python deployment/deploy_agents.py
+          uv run python deployment/deploy_agents.py
 
       # ── Publish agent_engine_id to Secret Manager ───────────────────────────
       # The frontend reads this secret at container startup via the REST API

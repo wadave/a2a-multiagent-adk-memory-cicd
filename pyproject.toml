@@ -9,7 +9,7 @@ dependencies = [
     "click>=8.2.1",
     "google-adk>=1.14.1",
     "google-auth-oauthlib>=1.2.2",
-    "google-auth[openid]>=2.40.3",
+    "google-auth>=2.40.3",
     "google-cloud-aiplatform>=1.113.0",
     "google-cloud-logging>=3.11.0",
     "google-genai>=1.36.0",
@@ -36,6 +36,12 @@ agent-engine = [
     "python-dotenv>=1.0.0",
     "google-cloud-logging>=3.11.0",
     "aiobreaker>=1.2.0",
+    "a2a-sdk>=0.3.5",
+    "google-adk>=1.14.1",
+    "google-auth-oauthlib>=1.2.2",
+    "google-auth>=2.40.3",
+    "click>=8.2.1",
+    "geopy>=2.4.1",
 ]
 
 [tool.pytest.ini_options]
@@ -53,12 +59,3 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "UP"]
 ignore = ["E501"]
 
-[tool.uv]
-[[tool.uv.index]]
-name = "google-ar"
-url = "https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/"
-explicit = true
-
-[tool.uv.sources]
-a2a-sdk = { index = "google-ar" }
-google-adk = { index = "google-ar" }
