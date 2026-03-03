@@ -23,14 +23,17 @@ repository_owner = "your-github-username"
 
 # ============================================================================
 # Optional: Gemini Enterprise integration
-# Leave blank to skip GE registration.
+# Set ge_app_staging to your existing GE app ID. Terraform will automatically
+# register your agent AND push GE_APP_STAGING as a GitHub Actions environment
+# variable so the CI/CD pipeline picks it up without any manual GitHub setup.
+# Requires GITHUB_TOKEN in your local environment when running terraform apply.
 # ============================================================================
 
 # Name of the Secret Manager secret containing the OAuth client credentials JSON.
 # oauth_client_id_secret_name = "client_secret"
 
-# Gemini Enterprise App ID for the staging environment.
-# ge_app_staging = ""
+# Gemini Enterprise App ID for the staging environment (your existing GE app).
+# ge_app_staging = "your-ge-app-id"
 
 # Gemini Enterprise App ID for the production environment.
 # ge_app_prod = ""

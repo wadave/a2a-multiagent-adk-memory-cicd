@@ -1,10 +1,14 @@
 terraform {
-  required_version = ">= 1.9.0"
+  required_version = ">= 1.8.0"
 
   required_providers {
     google = {
       source  = "hashicorp/google"
       version = ">= 5.0"
+    }
+    github = {
+      source  = "integrations/github"
+      version = "~> 6.0"
     }
   }
 }
@@ -12,4 +16,8 @@ terraform {
 provider "google" {
   project = var.cicd_runner_project_id
   region  = var.region
+}
+
+provider "github" {
+  owner = var.repository_owner
 }

@@ -59,8 +59,9 @@ module "gemini_enterprise_oauth" {
   scopes                   = local.oauth_scopes
 }
 
-# Register the Hosting Agent with Gemini Enterprise
-# Only runs when ge_app_staging is configured and a valid agent_engine_id is provided
+# Register the Hosting Agent with Gemini Enterprise.
+# Runs as soon as a valid agent_engine_id is available (i.e. after the first deployment).
+# ge_app_staging is sourced from config.auto.tfvars (committed) — no GitHub variable needed.
 module "gemini_enterprise_agent_engine_register" {
   depends_on = [
     module.gemini_enterprise_oauth
@@ -79,11 +80,9 @@ module "gemini_enterprise_agent_engine_register" {
   gemini_enterprise_agent_name       = "${local.gemini_enterprise_agent_name} (deploy)"
   gemini_enterprise_tool_description = local.gemini_enterprise_tool_description
 
-  # Note: The user needs to provide the app id for staging and prod
-  # Since deploy.yml only provides ge_app_staging to terraform apply, we use it here.
   gemini_enterprise_app_id = var.ge_app_staging
 
-  authorization_ids = { "AUTH_ID" = "deploy-${local.auth_id}" }
+  authorization_ids = var.oauth_client_id_secret_name != "" ? { "AUTH_ID" = "deploy-${local.auth_id}" } : {}
 
   agent_engine_id = var.agent_engine_id
 }

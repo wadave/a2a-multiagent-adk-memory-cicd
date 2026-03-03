@@ -181,7 +181,13 @@ echo "SERVICE_ACCOUNT:              github-runner@${PROJECT_ID}.iam.gserviceacco
 
 > **Variables vs Secrets**: The pipeline uses `${{ vars.* }}` — these are GitHub Actions **Variables** (non-sensitive config), not Secrets. Set them under **Environment variables**, not Environment secrets.
 
-> 💡 `local.tfvars` is for local manual runs only. The pipeline ignores it. To change values the pipeline uses, update the variables here.
+> 💡 `local.tfvars` is for local manual runs only and is never committed. To change values the pipeline uses, update the variables here.
+>
+> 💡 **Gemini Enterprise variables are set automatically.** If you set `ge_app_staging` (and optionally `oauth_client_id_secret_name`) in your `local.tfvars` before running `terraform apply`, Terraform will automatically create `GE_APP_STAGING` and `OAUTH_CLIENT_ID_SECRET_NAME` as GitHub Actions environment variables. You do not need to set them manually below. This requires a `GITHUB_TOKEN` with repo write access in your local environment:
+> ```bash
+> export GITHUB_TOKEN="ghp_your_token_here"
+> terraform apply -var-file=local.tfvars  # sets GE_APP_STAGING in GitHub automatically
+> ```
 
 Use the `gh` CLI — run once after completing Step 6 for each project (using the same shell session so `$PROVIDER_NAME` etc. are still set):
 
@@ -198,7 +204,9 @@ gh variable set WORKLOAD_IDENTITY_PROVIDER --env staging --body "$PROVIDER_NAME"
 gh variable set SERVICE_ACCOUNT            --env staging \
   --body "github-runner@${PROJECT_ID}.iam.gserviceaccount.com" -R $GH_FULL_REPO
 
-# Optional: only set if using Gemini Enterprise
+# Gemini Enterprise variables — only needed if you did NOT set ge_app_staging in local.tfvars
+# before running `terraform apply`. If you ran terraform with GITHUB_TOKEN set, these
+# were already created automatically and you can skip these two lines.
 # gh variable set GE_APP_STAGING             --env staging --body "your-ge-app-id"  -R $GH_FULL_REPO
 # gh variable set OAUTH_CLIENT_ID_SECRET_NAME --env staging --body "client_secret"  -R $GH_FULL_REPO
 
@@ -225,8 +233,8 @@ gh variable list --env production -R $GH_FULL_REPO
 | `PROJECT_NUMBER` | ✅ | GCP project number for this environment |
 | `WORKLOAD_IDENTITY_PROVIDER` | ✅ | Full WIF provider name from Step 6 |
 | `SERVICE_ACCOUNT` | ✅ | `github-runner@PROJECT_ID.iam.gserviceaccount.com` |
-| `GE_APP_STAGING` | optional | Gemini Enterprise App ID (skip if not using GE) |
-| `OAUTH_CLIENT_ID_SECRET_NAME` | optional | Secret Manager secret name for GE OAuth credentials |
+| `GE_APP_STAGING` | optional | Gemini Enterprise App ID. **Auto-set by Terraform** when `ge_app_staging` is in `local.tfvars`. |
+| `OAUTH_CLIENT_ID_SECRET_NAME` | optional | Secret Manager secret name for GE OAuth credentials. **Auto-set by Terraform** when `oauth_client_id_secret_name` is in `local.tfvars`. |
 
 ### Step 8: Add Repository Secrets (Optional)
 

@@ -226,6 +226,28 @@ jobs:
         run: |
           uv run python deployment/deploy_agents.py
 
+      # ── Register agent with Gemini Enterprise ──────────────────────────────
+      # Re-run Terraform now that we have the freshly-deployed agent_engine_id.
+      # The first Terraform Apply above used the *previous* run's ID (from Secret
+      # Manager); this second apply passes the *current* ID so GE registration
+      # happens in the same pipeline run that deployed the agent.
+
+      - name: Register agent with Gemini Enterprise
+        if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
+        working-directory: deployment/terraform
+        run: |
+          terraform apply -auto-approve \
+            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
+            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
+            -var="region=${{ env.REGION }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
+            -var="repository_name=${{ github.event.repository.name }}" \
+            -var="repository_owner=${{ github.repository_owner }}" \
+            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" \
+            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME || '' }}" \
+            -var="ge_app_staging=${{ vars.GE_APP_STAGING || '' }}" \
+            -var="ge_app_prod=${{ vars.GE_APP_PROD || '' }}"
+
       # ── Publish agent_engine_id to Secret Manager ───────────────────────────
       # The frontend reads this secret at container startup via the REST API
       # (see src/frontend/main.py).
