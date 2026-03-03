@@ -34,6 +34,7 @@ from a2a.types import (
 from dotenv import load_dotenv
 from google import adk
 from google.adk import Agent
+from google.adk.models import Gemini
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents.readonly_context import ReadonlyContext
 from google.adk.tools.tool_context import ToolContext
@@ -161,7 +162,10 @@ class AdkOrchestratorAgent:
     def create_agent(self) -> Agent:
         """Creates the orchestrator agent."""
         return Agent(
-            model=DEFAULT_MODEL,
+            model=Gemini(
+                model=DEFAULT_MODEL,
+                retry_options=types.HttpRetryOptions(attempts=3),
+            ),
             name="orchestrator_agent",
             instruction=self.root_instruction,
             before_model_callback=self.before_model_callback,

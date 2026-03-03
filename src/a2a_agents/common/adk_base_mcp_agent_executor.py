@@ -27,6 +27,7 @@ from a2a.utils.errors import ServerError
 from google import adk
 from google.adk import Runner
 from google.adk.agents import LlmAgent
+from google.adk.models import Gemini
 from google.adk.artifacts import InMemoryArtifactService
 from google.adk.memory import VertexAiMemoryBankService
 from google.adk.sessions import VertexAiSessionService
@@ -377,7 +378,10 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
 
             # Create the actual agent
             self.agent = LlmAgent(
-                model=config.get("model", DEFAULT_MODEL),
+                model=Gemini(
+                    model=config.get("model", DEFAULT_MODEL),
+                    retry_options=types.HttpRetryOptions(attempts=3),
+                ),
 
                 name=config["name"],
                 description=config["description"],
