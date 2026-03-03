@@ -201,6 +201,33 @@ jobs:
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }}
 
+      # ── Configure Model Armor floor settings ───────────────────────────────
+      # Runs after terraform apply so that all IAM bindings (modelarmor.admin,
+      # projectViewer, serviceUsageConsumer) have had time to propagate.
+      # roles/modelarmor.admin alone does not include resourcemanager.projects.get;
+      # roles/resourcemanager.projectViewer (added in iam.tf) fills that gap.
+
+      - name: Configure Model Armor floor settings
+        run: |
+          for i in $(seq 1 12); do
+            if gcloud model-armor floorsettings update \
+              --full-uri=projects/${{ env.PROJECT_ID }}/locations/global/floorSetting \
+              --enable-floor-setting-enforcement=TRUE \
+              --add-integrated-services=VERTEX_AI \
+              --vertex-ai-enforcement-type=INSPECT_AND_BLOCK \
+              --enable-vertex-ai-cloud-logging \
+              --pi-and-jailbreak-filter-settings-enforcement=enable \
+              --pi-and-jailbreak-filter-settings-confidence-level=low-and-above \
+              --malicious-uri-filter-settings-enforcement=ENABLED \
+              --rai-settings-filters="confidenceLevel=LOW_AND_ABOVE,filterType=HATE_SPEECH","confidenceLevel=LOW_AND_ABOVE,filterType=DANGEROUS","confidenceLevel=LOW_AND_ABOVE,filterType=SEXUALLY_EXPLICIT","confidenceLevel=LOW_AND_ABOVE,filterType=HARASSMENT" \
+              --project=${{ env.PROJECT_ID }}; then
+              echo "Model Armor floor settings configured successfully."
+              break
+            fi
+            echo "Retrying Model Armor configuration... ($i/12)"
+            sleep 15
+          done
+
       # ── Summary ─────────────────────────────────────────────────────────────
 
       - name: Deployment Summary

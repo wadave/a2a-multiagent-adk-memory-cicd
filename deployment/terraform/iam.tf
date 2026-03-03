@@ -31,25 +31,33 @@ resource "google_cloud_run_v2_service_iam_member" "frontend_invoker" {
   member   = "allUsers"
 }
 
-# Grant the CI/CD service account Model Armor Admin to manage floor settings
+# Grant the CI/CD service account Model Armor Admin to manage floor settings.
 resource "google_project_iam_member" "github_runner_modelarmor_admin" {
   project = var.deploy_project_id
   role    = "roles/modelarmor.admin"
   member  = "serviceAccount:github-runner@${var.cicd_runner_project_id}.iam.gserviceaccount.com"
 }
 
-# Grant the CI/CD service account token accessor to fetch source from Developer Connect / Cloud Build Connections
+# roles/modelarmor.admin does NOT include resourcemanager.projects.get, which
+# every gcloud command needs to validate the target project.  projectViewer
+# adds only read-only project metadata access — the minimal addition required.
+resource "google_project_iam_member" "github_runner_project_viewer" {
+  project = var.deploy_project_id
+  role    = "roles/resourcemanager.projectViewer"
+  member  = "serviceAccount:github-runner@${var.cicd_runner_project_id}.iam.gserviceaccount.com"
+}
+
+# Grant the CI/CD service account token accessor to fetch source from Developer Connect / Cloud Build Connections.
 resource "google_project_iam_member" "github_runner_token_accessor" {
   project = var.deploy_project_id
   role    = "roles/cloudbuild.readTokenAccessor"
   member  = "serviceAccount:github-runner@${var.cicd_runner_project_id}.iam.gserviceaccount.com"
 }
 
-# Grant the CI/CD service account Service Usage Consumer so that workload identity
-# federation credentials can use the project as a quota/billing project.
-# Without this, newer GCP APIs (like Model Armor) reject calls from external
-# credentials with PERMISSION_DENIED even when the service account has the API-
-# specific role (roles/modelarmor.admin).
+# Grant the CI/CD service account Service Usage Consumer so that Workload Identity
+# Federation credentials can use the project as a quota/billing project.
+# Without this, newer GCP APIs reject calls from external credentials with
+# PERMISSION_DENIED even when the service account has the API-specific role.
 resource "google_project_iam_member" "github_runner_serviceusage_consumer" {
   project = var.deploy_project_id
   role    = "roles/serviceusage.serviceUsageConsumer"
