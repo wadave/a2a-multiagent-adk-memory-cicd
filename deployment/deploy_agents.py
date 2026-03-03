@@ -62,6 +62,8 @@ def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, p
         "description": agent.agent_card.description,
         "service_account": f"{project_number}-compute@developer.gserviceaccount.com",
         "requirements": [
+            "--extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/",
+            "keyrings.google-artifactregistry-auth==1.1.2",
             "google-cloud-aiplatform[agent_engines,adk]==1.137.0",
             "a2a-sdk==0.3.22",
             "google-adk==1.25.0",
