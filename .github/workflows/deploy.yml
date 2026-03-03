@@ -298,6 +298,7 @@ jobs:
           echo "Deploying agents with MCP Server URLs:"
           echo "  Cocktail: $CT_MCP_SERVER_URL"
           echo "  Weather: $WEA_MCP_SERVER_URL"
+          .venv/bin/pip install a2a-sdk google-adk --target src/ --no-deps --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
           source .venv/bin/activate
           python deployment/deploy_agents.py
 
@@ -742,6 +743,7 @@ jobs:
           echo "Deploying agents with MCP Server URLs:"
           echo "  Cocktail: $CT_MCP_SERVER_URL"
           echo "  Weather: $WEA_MCP_SERVER_URL"
+          .venv/bin/pip install a2a-sdk google-adk --target src/ --no-deps --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
           source .venv/bin/activate
           python deployment/deploy_agents.py
 

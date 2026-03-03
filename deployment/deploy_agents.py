@@ -56,17 +56,19 @@ def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, p
     # Ensure "a2a_agents" is always included in extra_packages
     if "a2a_agents" not in extra_packages:
         extra_packages.append("a2a_agents")
+        
+    if os.path.exists("a2a") and "a2a" not in extra_packages:
+        extra_packages.append("a2a")
+        
+    if os.path.exists("google") and "google" not in extra_packages:
+        extra_packages.append("google")
 
     config = {
         "display_name": agent.agent_card.name,
         "description": agent.agent_card.description,
         "service_account": f"{project_number}-compute@developer.gserviceaccount.com",
         "requirements": [
-            "--extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/",
-            "keyrings.google-artifactregistry-auth==1.1.2",
             "google-cloud-aiplatform[agent_engines,adk]==1.137.0",
-            "a2a-sdk==0.3.22",
-            "google-adk==1.25.0",
             "google-genai==1.63.0",
             "pydantic==2.12.5",
             "cloudpickle==3.1.2",
