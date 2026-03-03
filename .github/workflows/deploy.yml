@@ -9,6 +9,19 @@ on:
       - '**.md'
       - 'assets/**'
   workflow_dispatch:
+    inputs:
+      deploy_agents:
+        description: 'Force re-deploy A2A agents (even if code unchanged)'
+        type: boolean
+        default: false
+      deploy_mcp:
+        description: 'Force re-build & deploy MCP servers (also triggers agent re-deploy)'
+        type: boolean
+        default: false
+      deploy_frontend:
+        description: 'Force re-build & deploy frontend'
+        type: boolean
+        default: false
 
 env:
   REGION: us-central1
@@ -36,7 +49,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          # fetch-depth: 0 ensures the base commit from github.event.before is
+          # always available, regardless of how many commits are in the push.
+          # With fetch-depth: 2, multi-commit pushes cause paths-filter to
+          # silently return false for every filter.
+          fetch-depth: 0
 
       - name: Detect changed components
         uses: dorny/paths-filter@v3
@@ -50,11 +67,46 @@ jobs:
             agents:
               - 'src/a2a_agents/**'
               - 'deployment/deploy_agents.py'
+              - 'pyproject.toml'
+              - 'uv.lock'
             frontend:
               - 'src/frontend/**'
               - '.github/workflows/deploy.yml'
             terraform:
               - 'deployment/terraform/**'
+
+      # Merge change-detection results with manual workflow_dispatch overrides.
+      # All subsequent steps read from steps.flags.outputs.* so the logic is
+      # defined in one place.
+      - name: Resolve deployment flags
+        id: flags
+        run: |
+          DEPLOY_COCKTAIL=false
+          DEPLOY_WEATHER=false
+          DEPLOY_AGENTS=false
+          DEPLOY_FRONTEND=false
+
+          [[ "${{ steps.changes.outputs.cocktail_mcp }}" == "true" || "${{ inputs.deploy_mcp }}" == "true" ]] \
+            && DEPLOY_COCKTAIL=true || true
+          [[ "${{ steps.changes.outputs.weather_mcp }}" == "true" || "${{ inputs.deploy_mcp }}" == "true" ]] \
+            && DEPLOY_WEATHER=true || true
+          [[ "${{ steps.changes.outputs.agents }}" == "true" \
+            || "$DEPLOY_COCKTAIL" == "true" || "$DEPLOY_WEATHER" == "true" \
+            || "${{ inputs.deploy_agents }}" == "true" ]] \
+            && DEPLOY_AGENTS=true || true
+          [[ "${{ steps.changes.outputs.frontend }}" == "true" || "${{ inputs.deploy_frontend }}" == "true" ]] \
+            && DEPLOY_FRONTEND=true || true
+
+          echo "cocktail_mcp=$DEPLOY_COCKTAIL" >> $GITHUB_OUTPUT
+          echo "weather_mcp=$DEPLOY_WEATHER"   >> $GITHUB_OUTPUT
+          echo "agents=$DEPLOY_AGENTS"         >> $GITHUB_OUTPUT
+          echo "frontend=$DEPLOY_FRONTEND"     >> $GITHUB_OUTPUT
+
+          echo "Deployment flags:"
+          echo "  Cocktail MCP : $DEPLOY_COCKTAIL"
+          echo "  Weather MCP  : $DEPLOY_WEATHER"
+          echo "  Agents       : $DEPLOY_AGENTS"
+          echo "  Frontend     : $DEPLOY_FRONTEND"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -77,21 +129,21 @@ jobs:
       # ── Build Container Images ──────────────────────────────────────────────
 
       - name: Build and push Cocktail MCP Server
-        if: steps.changes.outputs.cocktail_mcp == 'true'
+        if: steps.flags.outputs.cocktail_mcp == 'true'
         run: |
           gcloud builds submit ./src/mcp_servers/cocktail_mcp_server \
             --tag gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
       - name: Build and push Weather MCP Server
-        if: steps.changes.outputs.weather_mcp == 'true'
+        if: steps.flags.outputs.weather_mcp == 'true'
         run: |
           gcloud builds submit ./src/mcp_servers/weather_mcp_server \
             --tag gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
       - name: Build and push Frontend
-        if: steps.changes.outputs.frontend == 'true'
+        if: steps.flags.outputs.frontend == 'true'
         run: |
           gcloud builds submit ./src/frontend \
             --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb:latest \
@@ -154,7 +206,7 @@ jobs:
       # ── Deploy Agents ───────────────────────────────────────────────────────
 
       - name: Install Python dependencies
-        if: steps.changes.outputs.agents == 'true' || steps.changes.outputs.cocktail_mcp == 'true' || steps.changes.outputs.weather_mcp == 'true'
+        if: steps.flags.outputs.agents == 'true'
         run: |
           uv venv
           source .venv/bin/activate
@@ -165,7 +217,7 @@ jobs:
             --extra-index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
 
       - name: Deploy A2A Agents
-        if: steps.changes.outputs.agents == 'true' || steps.changes.outputs.cocktail_mcp == 'true' || steps.changes.outputs.weather_mcp == 'true'
+        if: steps.flags.outputs.agents == 'true'
         id: deploy_agents
         env:
           PROJECT_ID: ${{ env.PROJECT_ID }}
@@ -178,8 +230,8 @@ jobs:
           python deployment/deploy_agents.py
 
       # ── Publish agent_engine_id to Secret Manager ───────────────────────────
-      # The frontend reads this secret at container startup via the Python
-      # Secret Manager client (see src/frontend/main.py).
+      # The frontend reads this secret at container startup via the REST API
+      # (see src/frontend/main.py).
 
       - name: Update agent engine ID in Secret Manager
         if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
@@ -202,10 +254,9 @@ jobs:
             --project=${{ env.PROJECT_ID }}
 
       # ── Configure Model Armor floor settings ───────────────────────────────
-      # Runs after terraform apply so that all IAM bindings (modelarmor.admin,
-      # projectViewer, serviceUsageConsumer) have had time to propagate.
+      # Runs after terraform apply so all IAM bindings have had time to propagate.
       # roles/modelarmor.admin alone does not include resourcemanager.projects.get;
-      # roles/resourcemanager.projectViewer (added in iam.tf) fills that gap.
+      # roles/browser (added in iam.tf) fills that gap.
 
       - name: Configure Model Armor floor settings
         run: |
@@ -236,10 +287,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Cocktail MCP | ${{ steps.changes.outputs.cocktail_mcp == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Weather MCP  | ${{ steps.changes.outputs.weather_mcp == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Agents       | ${{ steps.changes.outputs.agents == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend     | ${{ steps.changes.outputs.frontend == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cocktail MCP | ${{ steps.flags.outputs.cocktail_mcp == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Weather MCP  | ${{ steps.flags.outputs.weather_mcp == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Agents       | ${{ steps.flags.outputs.agents == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend     | ${{ steps.flags.outputs.frontend == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Cocktail MCP URL:** ${{ steps.mcp_urls.outputs.CT_MCP_SERVER_URL }}" >> $GITHUB_STEP_SUMMARY
           echo "**Weather MCP URL:** ${{ steps.mcp_urls.outputs.WEA_MCP_SERVER_URL }}" >> $GITHUB_STEP_SUMMARY
