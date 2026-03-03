@@ -5,5 +5,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 COPY . /app
 ENV PATH="/app/.venv/bin:$PATH"
-RUN uv sync --no-install-project
+# index-url restricts resolution to PyPI only so no GCP auth is needed during build.
+# a2a-sdk and google-adk are available on public PyPI at the required versions.
+RUN uv sync --no-install-project --index-url https://pypi.org/simple
 ENTRYPOINT ["python", "app.py"]

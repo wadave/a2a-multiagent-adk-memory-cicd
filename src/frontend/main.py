@@ -59,21 +59,42 @@ LOCATION = os.getenv("LOCATION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "us-ce
 
 
 def _resolve_agent_engine_id() -> str | None:
-    """Read agent engine ID from env var, falling back to Secret Manager."""
+    """Read agent engine ID from env var, falling back to Secret Manager REST API.
+
+    Uses httpx + google-auth (already available) so no extra dependency is needed.
+    """
     value = os.getenv("AGENT_ENGINE_ID", "")
     if value and value != "unset":
         return value
     if not PROJECT_ID:
         return value or None
     try:
-        from google.cloud import secretmanager
-        sm = secretmanager.SecretManagerServiceClient()
-        name = f"projects/{PROJECT_ID}/secrets/agent-engine-id/versions/latest"
-        resp = sm.access_secret_version(request={"name": name})
-        secret_val = resp.payload.data.decode("UTF-8")
-        if secret_val and secret_val != "unset":
-            logger.info("Loaded AGENT_ENGINE_ID from Secret Manager.")
-            return secret_val
+        import base64
+
+        import httpx
+        from google.auth import default as google_auth_default
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+
+        credentials, _ = google_auth_default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        credentials.refresh(GoogleAuthRequest())
+        url = (
+            f"https://secretmanager.googleapis.com/v1"
+            f"/projects/{PROJECT_ID}/secrets/agent-engine-id/versions/latest:access"
+        )
+        resp = httpx.get(
+            url,
+            headers={"Authorization": f"Bearer {credentials.token}"},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            payload = resp.json().get("payload", {}).get("data", "")
+            if payload:
+                secret_val = base64.b64decode(payload).decode("utf-8")
+                if secret_val and secret_val != "unset":
+                    logger.info("Loaded AGENT_ENGINE_ID from Secret Manager.")
+                    return secret_val
     except Exception as e:
         logger.warning(f"Could not read AGENT_ENGINE_ID from Secret Manager: {e}")
     return value or None
