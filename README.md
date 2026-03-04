@@ -128,6 +128,8 @@ _Note the generated URLs for both services._
 Update your local environment variables with the MCP URLs and your GCP Project settings, then run:
 
 ```bash
+# Install agent-engine dependencies first
+uv sync --extra agent-engine
 python deployment/deploy_agents.py
 ```
 
@@ -136,6 +138,7 @@ _Save the generated Agent Engine ID at the end of the script for the frontend se
 **3. Deploy Frontend**
 
 ```bash
+cd src/frontend
 gcloud builds submit --tag gcr.io/$PROJECT_ID/a2a-frontend-adk-mb
 gcloud run deploy a2a-frontend-adk-mb --image gcr.io/$PROJECT_ID/a2a-frontend-adk-mb --region $GOOGLE_CLOUD_REGION --set-env-vars="AGENT_ENGINE_ID=$AGENT_ENGINE_ID,PROJECT_ID=$PROJECT_ID,LOCATION=$GOOGLE_CLOUD_REGION" --allow-unauthenticated
 ```
@@ -156,6 +159,8 @@ The application leverages **Google Cloud Logging** to provide structured, centra
 ## Testing & Quality Assurance
 
 We maintain rigorous testing standards across the application. For detailed instructions on running evaluations and load tests, refer to our [Testing Summary](tests/TESTING_SUMMARY.md).
+
+> Requires Python 3.12+. Install dependencies with `uv sync --extra dev`.
 
 ```bash
 # Run all unit tests

@@ -68,15 +68,17 @@ graph TD
 
 | Component         | Technology                                         |
 | :---------------- | :------------------------------------------------- |
-| **Language**      | Python 3.10+, `aiobreaker` for resiliency          |
+| **Language**      | Python 3.12+, `aiobreaker` for resiliency          |
 | **AI Framework**  | Google Agent Development Kit (ADK)                 |
+| **Agent SDK**     | `a2a-sdk` for A2A protocol implementation          |
 | **Protocols**     | A2A (Agent-to-Agent), MCP (Model Context Protocol) |
 | **Communication** | SSE (Server-Sent Events) for MCP, JSON-RPC for A2A |
-| **Compute**       | Google Cloud Run, Vertex AI Reasoning Engine       |
+| **Compute**       | Google Cloud Run, Vertex AI Agent Engine           |
 | **Storage**       | Vertex AI Memory Bank                              |
 | **Security**      | IAM, WIF, Secret Manager, Cloud Model Armor        |
 | **CI/CD**         | GitHub Actions, Terraform                          |
 | **UI**            | Gradio                                             |
+| **Package Mgr**   | `uv` with `pyproject.toml`                         |
 
 ## 4. Detailed Design
 
@@ -157,7 +159,7 @@ The system implements a centralized logging strategy to provide visibility acros
 
 ## 7. Deployment Architecture
 
-### 6.1 Infrastructure as Code (Terraform)
+### 7.1 Infrastructure as Code (Terraform)
 
 The environment consists of several Terraform-managed resources:
 
@@ -165,15 +167,20 @@ The environment consists of several Terraform-managed resources:
 - `google_service_account`: Dedicated identities for each component.
 - `google_project_service`: Automatic enablement of required APIs (e.g., `aiplatform.googleapis.com`).
 
-### 6.2 CI/CD Pipeline
+### 7.2 CI/CD Pipeline
 
-GitHub Actions automates the lifecycle:
+GitHub Actions automates the lifecycle (`.github/workflows/deploy.yml`):
 
-- **Build**: Containerizes Gradio and MCP servers.
-- **Deploy**: Updates Cloud Run services and deploys agents to Vertex AI Reasoning Engine.
-- **Versioning**: Each deployment is tracked via Git tags and Terraform state.
+- **Change Detection**: Path-filter determines which components changed (MCP servers, agents, frontend, Terraform).
+- **Build**: Containerizes Gradio frontend and MCP servers via `gcloud builds submit`.
+- **Infrastructure**: Terraform apply provisions Cloud Run, IAM, Secret Manager, and Model Armor resources.
+- **Agent Deploy**: `deployment/deploy_agents.py` packages and deploys agents to Vertex AI Agent Engine.
+- **Gemini Enterprise**: Second Terraform pass registers agents with Gemini Enterprise for external discovery.
+- **Secret Update**: Stores the Agent Engine ID in Secret Manager for the frontend to consume at startup.
+- **Model Armor**: Enforces safety floor settings after each deployment.
+- **Authentication**: Uses Workload Identity Federation (keyless) between GitHub Actions and Google Cloud.
 
-## 7. Testing Strategy
+## 8. Testing Strategy
 
 The project employs a multi-tiered testing strategy:
 
@@ -182,7 +189,7 @@ The project employs a multi-tiered testing strategy:
 3.  **Evaluation (Eval) Suite**: Uses Gemini to score agent performance based on accuracy and helpfulness metrics.
 4.  **Load Testing**: Simulating concurrent users to ensure stability under stress (`locust`).
 
-## 8. Appendices
+## 9. Appendices
 
 - **Source Code**: [GitHub Repository](https://github.com/wadave/a2a-multiagent-adk-memory-cicd)
 
