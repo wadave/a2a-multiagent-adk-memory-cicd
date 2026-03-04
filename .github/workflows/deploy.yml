@@ -181,6 +181,8 @@ jobs:
 
       - name: Terraform Apply
         working-directory: deployment/terraform
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           terraform apply -auto-approve \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
@@ -235,6 +237,8 @@ jobs:
       - name: Register agent with Gemini Enterprise
         if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
         working-directory: deployment/terraform
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           terraform apply -auto-approve \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
