@@ -51,7 +51,11 @@ module "gemini_enterprise_oauth" {
 
   project_id               = var.deploy_project_id
   gemini_enterprise_region = var.agents_region
-  authorization_id         = "deploy-${local.auth_id}"
+  
+  # We use the agent_engine_id suffix to make the authorization unique per agent deployment
+  # var.agent_engine_id looks like: projects/123/locations/us-central1/reasoningEngines/456
+  authorization_id         = var.agent_engine_id != "unset" && var.agent_engine_id != "" ? "deploy-${local.auth_id}-${element(split("/", var.agent_engine_id), 5)}" : "deploy-${local.auth_id}"
+  
   oauth_client_id          = local.oauth_client_id
   oauth_client_secret      = local.oauth_client_secret
   authorization_uri_base   = local.authorization_uri_base
@@ -82,7 +86,7 @@ module "gemini_enterprise_agent_engine_register" {
 
   gemini_enterprise_app_id = var.ge_app_staging
 
-  authorization_ids = var.oauth_client_id_secret_name != "" ? { "AUTH_ID" = "deploy-${local.auth_id}" } : {}
+  authorization_ids = var.oauth_client_id_secret_name != "" ? { "AUTH_ID" = var.agent_engine_id != "unset" && var.agent_engine_id != "" ? "deploy-${local.auth_id}-${element(split("/", var.agent_engine_id), 5)}" : "deploy-${local.auth_id}" } : {}
 
   agent_engine_id = var.agent_engine_id
 }
