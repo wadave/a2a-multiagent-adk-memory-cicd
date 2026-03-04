@@ -162,15 +162,6 @@ jobs:
             --project=${{ env.PROJECT_ID }} 2>/dev/null || echo "unset")
           echo "AGENT_ENGINE_ID=${AGENT_ID}" >> $GITHUB_OUTPUT
 
-      - name: Get GitHub token from Secret Manager
-        id: github_token
-        run: |
-          GH_TOKEN=$(gcloud secrets versions access latest \
-            --secret=git-a2a-multiagent-adk-memory-cicd-github-oauthtoken-233ddb \
-            --project=${{ env.PROJECT_ID }})
-          echo "::add-mask::${GH_TOKEN}"
-          echo "GH_TOKEN=${GH_TOKEN}" >> $GITHUB_OUTPUT
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
@@ -188,10 +179,17 @@ jobs:
             -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
             -backend-config="prefix=${{ github.event.repository.name }}/${{ github.ref_name }}"
 
+      - name: Terraform State RM GitHub Resources
+        working-directory: deployment/terraform
+        run: |
+          terraform state rm 'github_repository_environment.staging' || true
+          terraform state rm 'github_repository_environment.main' || true
+          terraform state rm 'github_actions_environment_variable.ge_app_staging' || true
+          terraform state rm 'github_actions_environment_variable.ge_app_prod' || true
+          terraform state rm 'github_actions_environment_variable.oauth_client_id_secret_name' || true
+
       - name: Terraform Apply
         working-directory: deployment/terraform
-        env:
-          GITHUB_TOKEN: ${{ steps.github_token.outputs.GH_TOKEN }}
         run: |
           terraform apply -auto-approve \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
@@ -246,8 +244,6 @@ jobs:
       - name: Register agent with Gemini Enterprise
         if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
         working-directory: deployment/terraform
-        env:
-          GITHUB_TOKEN: ${{ steps.github_token.outputs.GH_TOKEN }}
         run: |
           terraform apply -auto-approve \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \

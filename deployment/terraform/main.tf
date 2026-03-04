@@ -6,18 +6,10 @@ terraform {
       source  = "hashicorp/google"
       version = ">= 5.0"
     }
-    github = {
-      source  = "integrations/github"
-      version = "~> 6.0"
-    }
   }
 }
 
 provider "google" {
   project = var.cicd_runner_project_id
   region  = var.region
-}
-
-provider "github" {
-  owner = var.repository_owner
 }
