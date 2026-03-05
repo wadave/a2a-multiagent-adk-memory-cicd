@@ -8,12 +8,8 @@ from google.oauth2 import id_token
 
 # MCP Server URLs - Updated to match your project's running services
 # Added trailing slash to avoid potential redirects that strip auth headers
-COCKTAIL_SERVER_URL = (
-    "https://cocktail-remote-mcp-server-496235138247.us-central1.run.app/"
-)
-WEATHER_SERVER_URL = (
-    "https://weather-remote-mcp-server-496235138247.us-central1.run.app/"
-)
+COCKTAIL_SERVER_URL = "https://cocktail-remote-mcp-server-496235138247.us-central1.run.app/"
+WEATHER_SERVER_URL = "https://weather-remote-mcp-server-496235138247.us-central1.run.app/"
 
 
 class BearerAuth(httpx.Auth):
@@ -72,9 +68,7 @@ async def test_cocktail_server():
 
         # Call search tool
         print("Calling search_cocktail_by_name('margarita')...")
-        result = await client.call_tool(
-            "search_cocktail_by_name", {"name": "margarita"}
-        )
+        result = await client.call_tool("search_cocktail_by_name", {"name": "margarita"})
         if hasattr(result, "content") and result.content:
             print(f"<<< ✅ Result: {result.content[0].text[:200]}...")
         else:
@@ -102,9 +96,7 @@ async def test_weather_server():
 
         # Call forecast tool
         print("Calling get_forecast_by_city('New York', 'NY')...")
-        result = await client.call_tool(
-            "get_forecast_by_city", {"city": "New York", "state": "NY"}
-        )
+        result = await client.call_tool("get_forecast_by_city", {"city": "New York", "state": "NY"})
         if hasattr(result, "content") and result.content:
             print(f"<<< ✅ Result: {result.content[0].text[:200]}...")
         else:
@@ -117,9 +109,7 @@ async def main():
         await test_weather_server()
     except Exception as e:
         print(f"Error during testing: {e}")
-        print(
-            "Ensure you have authenticated with 'gcloud auth application-default login'"
-        )
+        print("Ensure you have authenticated with 'gcloud auth application-default login'")
         import traceback
 
         traceback.print_exc()

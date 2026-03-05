@@ -19,6 +19,7 @@ import os
 
 import httpx
 import vertexai
+from a2a.client import ClientConfig, ClientFactory
 from a2a.types import (
     Message,
     Part,
@@ -29,8 +30,6 @@ from a2a.types import (
 )
 from dotenv import load_dotenv
 from google.genai import types
-
-from a2a.client import ClientConfig, ClientFactory
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
@@ -45,17 +44,13 @@ def get_bearer_token():
         from google.auth import default
         from google.auth.transport.requests import Request
 
-        credentials, project = default(
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
+        credentials, project = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
         request = Request()
         credentials.refresh(request)
         return credentials.token
     except Exception as e:
         print(f"Error getting credentials: {e}")
-        print(
-            "Please ensure you have authenticated with 'gcloud auth application-default login'."
-        )
+        print("Please ensure you have authenticated with 'gcloud auth application-default login'.")
     return None
 
 
@@ -82,7 +77,9 @@ async def test_remote_hosting_agent():
 
     # Get the remote agent
     print("Getting remote hosting agent...")
-    agent_resource_name = f"projects/{project_number}/locations/{location}/reasoningEngines/{hosting_agent_id}"
+    agent_resource_name = (
+        f"projects/{project_number}/locations/{location}/reasoningEngines/{hosting_agent_id}"
+    )
     config = {
         "http_options": {
             "base_url": f"https://{location}-aiplatform.googleapis.com",
@@ -162,7 +159,7 @@ async def test_remote_hosting_agent():
             print(f"Error polling task: {e}")
             break
 
-        print(f"Poll {i+1}: {response.status.state}")
+        print(f"Poll {i + 1}: {response.status.state}")
 
         if response.status.state == "TASK_STATE_COMPLETED":
             if hasattr(response, "artifacts") and response.artifacts:

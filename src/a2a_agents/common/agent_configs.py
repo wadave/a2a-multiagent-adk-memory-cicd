@@ -18,7 +18,6 @@ This module contains configuration dictionaries for different agent types.
 Each configuration defines the agent's name, description, instruction, and MCP settings.
 """
 
-
 DEFAULT_MODEL = "gemini-2.5-flash"
 
 COCKTAIL_AGENT_CONFIG: dict = {

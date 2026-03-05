@@ -29,6 +29,7 @@ from typing import Any
 import gradio as gr
 import httpx
 import vertexai
+from a2a.client import Client, ClientConfig, ClientFactory
 from a2a.types import (
     Message,
     Part,
@@ -42,12 +43,9 @@ from google.auth import default
 from google.auth.transport.requests import Request as AuthRequest
 from google.genai import types as genai_types
 
-from a2a.client import Client, ClientConfig, ClientFactory
-
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("a2a-frontend")
 
@@ -118,7 +116,9 @@ client = vertexai.Client(
 if AGENT_ENGINE_ID and "/" in AGENT_ENGINE_ID:
     remote_a2a_agent_resource_name = AGENT_ENGINE_ID
 else:
-    remote_a2a_agent_resource_name = f"projects/{PROJECT_NUMBER}/locations/{LOCATION}/reasoningEngines/{AGENT_ENGINE_ID}"
+    remote_a2a_agent_resource_name = (
+        f"projects/{PROJECT_NUMBER}/locations/{LOCATION}/reasoningEngines/{AGENT_ENGINE_ID}"
+    )
 
 
 class GoogleAuth(httpx.Auth):
@@ -156,9 +156,7 @@ async def get_agent_card(resource_name: str):
         return _agent_card_cache
 
     logger.info(f"Fetching agent card for {resource_name}...")
-    config = {
-        "http_options": {"base_url": "https://LOCATION-aiplatform.googleapis.com"}
-    }
+    config = {"http_options": {"base_url": "https://LOCATION-aiplatform.googleapis.com"}}
     # Fix the template LOCATION variable if it was literally LOCATION
     actual_location = LOCATION or "us-central1"
     config["http_options"]["base_url"] = f"https://{actual_location}-aiplatform.googleapis.com"
@@ -214,16 +212,18 @@ async def get_response_from_agent(
             task_object = response_chunk[0]
 
             # Show status updates in the UI
-            status_text = task_object.status.state.name if hasattr(task_object.status.state, "name") else str(task_object.status.state)
+            status_text = (
+                task_object.status.state.name
+                if hasattr(task_object.status.state, "name")
+                else str(task_object.status.state)
+            )
             yield gr.ChatMessage(role="assistant", content=f"*Agent status: {status_text}...*")
 
             if task_object.status.state == TaskState.completed:
                 logger.info("Task completed. Checking for artifacts...")
                 if hasattr(task_object, "artifacts") and task_object.artifacts:
                     for artifact in task_object.artifacts:
-                        if artifact.parts and isinstance(
-                            artifact.parts[0].root, TextPart
-                        ):
+                        if artifact.parts and isinstance(artifact.parts[0].root, TextPart):
                             final_result_text = artifact.parts[0].root.text
                             logger.info(f"Found artifact text: {final_result_text[:50]}...")
                             break
@@ -257,7 +257,6 @@ async def get_response_from_agent(
         if a2a_client:
             await a2a_client.close()
             logger.info("A2A client closed.")
-
 
 
 async def main():
@@ -297,6 +296,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     finally:
+
         async def shutdown():
             await shared_httpx_client.aclose()
             logger.info("Shared HTTP client closed.")

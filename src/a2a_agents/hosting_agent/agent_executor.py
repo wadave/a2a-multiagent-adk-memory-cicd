@@ -120,16 +120,8 @@ class HostingAgentExecutor(AdkOrchestratorAgentExecutor):
                 },
                 {"managed_memory_topic": {"managed_topic_enum": "USER_PERSONAL_INFO"}},
                 {"managed_memory_topic": {"managed_topic_enum": "USER_PREFERENCES"}},
-                {
-                    "managed_memory_topic": {
-                        "managed_topic_enum": "KEY_CONVERSATION_DETAILS"
-                    }
-                },
-                {
-                    "managed_memory_topic": {
-                        "managed_topic_enum": "EXPLICIT_INSTRUCTIONS"
-                    }
-                },
+                {"managed_memory_topic": {"managed_topic_enum": "KEY_CONVERSATION_DETAILS"}},
+                {"managed_memory_topic": {"managed_topic_enum": "EXPLICIT_INSTRUCTIONS"}},
             ],
         }
 
@@ -143,7 +135,7 @@ class HostingAgentExecutor(AdkOrchestratorAgentExecutor):
                         },
                         "customization_configs": [orchestrator_memory_config],
                     }
-                }
+                },
             }
         )
         agent_engine_id = agent_engine.api_resource.name.split("/")[-1]

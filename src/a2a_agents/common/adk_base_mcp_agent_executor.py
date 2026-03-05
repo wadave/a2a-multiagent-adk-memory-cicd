@@ -18,21 +18,12 @@ import time
 from abc import ABC, abstractmethod
 from typing import NoReturn
 
-from a2a.types import Role, TaskState, TextPart, UnsupportedOperationError
-from a2a.utils.errors import ServerError
-from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
-from google.adk.tools.mcp_tool.mcp_toolset import McpToolset
-from google.auth import exceptions as google_auth_exceptions
-from google.auth.transport import requests as google_auth_requests
-from google.genai import Client, types
-from google.oauth2 import id_token as google_id_token
-
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
+from a2a.types import Role, TaskState, TextPart, UnsupportedOperationError
 from a2a.utils import new_agent_text_message
-from a2a_agents.common.agent_configs import DEFAULT_MODEL
-from a2a_agents.common.logging_utils import setup_cloud_logging
+from a2a.utils.errors import ServerError
 from google import adk
 from google.adk import Runner
 from google.adk.agents import LlmAgent
@@ -40,6 +31,15 @@ from google.adk.artifacts import InMemoryArtifactService
 from google.adk.memory import VertexAiMemoryBankService
 from google.adk.models import Gemini
 from google.adk.sessions import VertexAiSessionService
+from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
+from google.adk.tools.mcp_tool.mcp_toolset import McpToolset
+from google.auth import exceptions as google_auth_exceptions
+from google.auth.transport import requests as google_auth_requests
+from google.genai import Client, types
+from google.oauth2 import id_token as google_id_token
+
+from a2a_agents.common.agent_configs import DEFAULT_MODEL
+from a2a_agents.common.logging_utils import setup_cloud_logging
 
 
 def get_gcp_auth_headers(audience: str) -> dict[str, str]:
@@ -79,8 +79,7 @@ def get_gcp_auth_headers(audience: str) -> dict[str, str]:
         # Any other error means ADC was likely found but token minting failed
         # (e.g., IAM permissions, wrong audience, metadata server unreachable).
         logging.critical(
-            f"An unexpected error occurred fetching OIDC token for audience "
-            f"'{audience}': {e}",
+            f"An unexpected error occurred fetching OIDC token for audience '{audience}': {e}",
             exc_info=True,
         )
 
@@ -100,12 +99,8 @@ class PersistentVertexAiMemoryBankService(VertexAiMemoryBankService):
     lifetime of the service, preventing premature httpx client closure.
     """
 
-    def __init__(
-        self, project: str = None, location: str = None, agent_engine_id: str = None
-    ):
-        super().__init__(
-            project=project, location=location, agent_engine_id=agent_engine_id
-        )
+    def __init__(self, project: str = None, location: str = None, agent_engine_id: str = None):
+        super().__init__(project=project, location=location, agent_engine_id=agent_engine_id)
         # Create and cache both the Client and API client once
         self._persistent_client = None
         self._persistent_api_client = None
@@ -133,12 +128,8 @@ class PersistentVertexAiSessionService(VertexAiSessionService):
     lifetime of the service, preventing premature httpx client closure.
     """
 
-    def __init__(
-        self, project: str = None, location: str = None, agent_engine_id: str = None
-    ):
-        super().__init__(
-            project=project, location=location, agent_engine_id=agent_engine_id
-        )
+    def __init__(self, project: str = None, location: str = None, agent_engine_id: str = None):
+        super().__init__(project=project, location=location, agent_engine_id=agent_engine_id)
         # Create and cache both the Client and API client once
         self._persistent_client = None
         self._persistent_api_client = None
@@ -190,9 +181,7 @@ class TokenManager:
                 # ID tokens typically expire in 1 hour (3600 seconds)
                 # Refresh 5 minutes (300 seconds) before expiry by default
                 self._expiry = current_time + 3600 - self.refresh_buffer_seconds
-                logging.info(
-                    f"TokenManager: Refreshed token, next refresh at {self._expiry}"
-                )
+                logging.info(f"TokenManager: Refreshed token, next refresh at {self._expiry}")
             else:
                 # No token available
                 self._token = None
@@ -240,7 +229,6 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
             if self.agent_engine_id:
                 logging.info(f"Using agent_engine_id from environment: {self.agent_engine_id}")
 
-
     @abstractmethod
     def get_agent_config(self) -> dict:
         """
@@ -278,10 +266,9 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                                 f"projects/{self.project_id}/locations/{self.location}/"
                                 f"publishers/google/models/{DEFAULT_MODEL}"
                             )
-
                         }
                     }
-                }
+                },
             }
         )
         agent_engine_id = agent_engine.api_resource.name.split("/")[-1]
@@ -320,6 +307,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                 )
                 from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
                 from google.adk.sessions.in_memory_session_service import InMemorySessionService
+
                 my_memory_service = InMemoryMemoryService()
                 my_session_service = InMemorySessionService()
 
@@ -359,15 +347,12 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                 memory_service = callback_context._invocation_context.memory_service
 
                 logging.info(
-                    f"Saving session {session.id} to memory bank for "
-                    f"user_id={session.user_id}"
+                    f"Saving session {session.id} to memory bank for user_id={session.user_id}"
                 )
 
                 try:
                     await memory_service.add_session_to_memory(session)
-                    logging.info(
-                        f"Memory generation completed for session {session.id}"
-                    )
+                    logging.info(f"Memory generation completed for session {session.id}")
                 except Exception as e:
                     logging.error(
                         f"Memory generation failed for session {session.id}: {e}",
@@ -380,7 +365,6 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                     model=config.get("model", DEFAULT_MODEL),
                     retry_options=types.HttpRetryOptions(attempts=3),
                 ),
-
                 name=config["name"],
                 description=config["description"],
                 instruction=config["instruction"],
@@ -464,7 +448,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
             # Use local variable for type safety
             runner = self.runner
             if runner is None:
-                 raise ServerError(message="Runner not initialized")
+                raise ServerError(message="Runner not initialized")
 
             async for event in runner.run_async(
                 session_id=session.id,
@@ -515,7 +499,9 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
             for tool in self.agent.tools:
                 if isinstance(tool, McpToolset):
                     # Access private attribute to update headers
-                    if hasattr(tool, "_connection_params") and hasattr(tool._connection_params, "headers"):
+                    if hasattr(tool, "_connection_params") and hasattr(
+                        tool._connection_params, "headers"
+                    ):
                         tool._connection_params.headers = fresh_headers
                         logging.debug("Refreshed MCP authentication headers")
 
@@ -523,7 +509,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         """Get existing session or create new one."""
         runner = self.runner
         if runner is None:
-             raise ServerError(message="Runner not initialized")
+            raise ServerError(message="Runner not initialized")
 
         # For Vertex AI Session Service, don't pass session_id to get_session
         # Instead, create a new session each time (stateless per A2A context)
@@ -558,7 +544,6 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         return "user"  # Fallback to default if not authenticated or not provided
 
     def _extract_answer(self, event) -> str:
-
         """Extract text answer from agent response."""
         parts = event.content.parts
         text_parts = [part.text for part in parts if part.text]
@@ -566,9 +551,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         # Join all text parts with space
         return " ".join(text_parts) if text_parts else "No answer found."
 
-    async def cancel(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> NoReturn:
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> NoReturn:
         """Handle task cancellation requests.
 
         For long-running agents, this would:
@@ -576,8 +559,6 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         2. Clean up resources
         3. Update task state to 'cancelled'
         """
-        logging.warning(
-            f"Cancellation requested for task {context.task_id}, but not supported."
-        )
+        logging.warning(f"Cancellation requested for task {context.task_id}, but not supported.")
         # Inform client that cancellation isn't supported
         raise ServerError(error=UnsupportedOperationError())

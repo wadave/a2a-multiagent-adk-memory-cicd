@@ -22,6 +22,10 @@ on:
         description: 'Force re-build & deploy frontend'
         type: boolean
         default: false
+      force_unlock_terraform:
+        description: 'Force-unlock stale Terraform state locks (use after cancelled runs)'
+        type: boolean
+        default: false
 
 env:
   REGION: us-central1
@@ -151,8 +155,9 @@ jobs:
             --project ${{ env.PROJECT_ID }}
 
       # ── Terraform Apply — Infrastructure ──────────────────────────────────
-      # Creates Cloud Run shells (placeholder images), IAM, secrets, Model Armor API.
-      # Does NOT manage container images or GE registration.
+      # Creates Cloud Run shells (placeholder images), Agent Engine shells
+      # (dummy source), IAM, secrets, Model Armor API.
+      # Does NOT manage container images, agent source code, or GE registration.
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -171,6 +176,20 @@ jobs:
             -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
             -backend-config="prefix=${{ github.event.repository.name }}/${{ github.ref_name }}"
 
+      - name: Force-unlock Terraform state (infra)
+        if: inputs.force_unlock_terraform == true
+        working-directory: deployment/terraform
+        run: |
+          echo "Attempting to force-unlock stale Terraform state lock..."
+          LOCK_ID=$(terraform plan -lock=false -detailed-exitcode 2>&1 \
+            | grep -oP 'ID:\s+\K\d+' || true)
+          if [ -n "$LOCK_ID" ]; then
+            echo "Found lock ID: $LOCK_ID — force-unlocking..."
+            terraform force-unlock -force "$LOCK_ID"
+          else
+            echo "No stale lock found."
+          fi
+
       - name: Terraform State RM GitHub Resources
         working-directory: deployment/terraform
         run: |
@@ -183,7 +202,7 @@ jobs:
       - name: Terraform Apply (infra)
         working-directory: deployment/terraform
         run: |
-          terraform apply -auto-approve \
+          terraform apply -auto-approve -lock-timeout=5m \
             -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="region=${{ env.REGION }}" \
@@ -191,14 +210,15 @@ jobs:
             -var="repository_name=${{ github.event.repository.name }}" \
             -var="repository_owner=${{ github.repository_owner }}"
 
-      # ── Get MCP URLs from Terraform outputs ────────────────────────────────
+      # ── Get Terraform outputs ───────────────────────────────────────────────
 
-      - name: Get MCP server URLs
-        id: mcp_urls
+      - name: Get Terraform outputs
+        id: tf_outputs
         working-directory: deployment/terraform
         run: |
           echo "CT_MCP_SERVER_URL=$(terraform output -raw cocktail_mcp_server_url)" >> $GITHUB_OUTPUT
           echo "WEA_MCP_SERVER_URL=$(terraform output -raw weather_mcp_server_url)" >> $GITHUB_OUTPUT
+          echo "HOSTING_AGENT_ENGINE_ID=$(terraform output -raw hosting_agent_engine_id)" >> $GITHUB_OUTPUT
 
       # ── Deploy Cloud Run Services via gcloud ───────────────────────────────
       # Terraform created the shells; gcloud updates them with real images.
@@ -227,14 +247,20 @@ jobs:
         run: |
           uv sync --locked --extra agent-engine
 
+      - name: Generate requirements file
+        run: |
+          uv export --no-hashes --no-sources --no-header \
+            --no-dev --no-emit-project --no-annotate --locked \
+            > src/.requirements.txt
+
       - name: Deploy A2A Agents
         id: deploy_agents
         env:
           PROJECT_ID: ${{ env.PROJECT_ID }}
           PROJECT_NUMBER: ${{ env.PROJECT_NUMBER }}
           LOCATION: ${{ env.REGION }}
-          CT_MCP_SERVER_URL: ${{ steps.mcp_urls.outputs.CT_MCP_SERVER_URL }}
-          WEA_MCP_SERVER_URL: ${{ steps.mcp_urls.outputs.WEA_MCP_SERVER_URL }}
+          CT_MCP_SERVER_URL: ${{ steps.tf_outputs.outputs.CT_MCP_SERVER_URL }}
+          WEA_MCP_SERVER_URL: ${{ steps.tf_outputs.outputs.WEA_MCP_SERVER_URL }}
         run: |
           uv run python deployment/deploy_agents.py
 
@@ -242,7 +268,7 @@ jobs:
       # Deployed after agents so AGENT_ENGINE_ID is available for env vars.
 
       - name: Deploy Frontend to Cloud Run
-        if: steps.flags.outputs.frontend == 'true' || steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
+        if: steps.flags.outputs.frontend == 'true' || steps.agent_id.outputs.AGENT_ENGINE_ID != ''
         run: |
           gcloud run deploy a2a-frontend-adk-mb \
             --image gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb:latest \
@@ -250,13 +276,28 @@ jobs:
             --project ${{ env.PROJECT_ID }} \
             --set-env-vars "PROJECT_ID=${{ env.PROJECT_ID }},PROJECT_NUMBER=${{ env.PROJECT_NUMBER }},GOOGLE_CLOUD_LOCATION=${{ env.REGION }}"
 
+      # ── Resolve Hosting Agent Engine ID ──────────────────────────────────────
+      # The hosting agent engine ID is known from Terraform outputs (stable
+      # after first creation). deploy_agents.py also outputs it for validation.
+
+      - name: Resolve agent engine ID
+        id: agent_id
+        run: |
+          # Prefer deploy_agents output (reflects the just-updated agent);
+          # fall back to Terraform output (stable shell ID).
+          AGENT_ID="${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}"
+          if [ -z "$AGENT_ID" ]; then
+            AGENT_ID="${{ steps.tf_outputs.outputs.HOSTING_AGENT_ENGINE_ID }}"
+          fi
+          echo "AGENT_ENGINE_ID=$AGENT_ID" >> $GITHUB_OUTPUT
+
       # ── Publish agent_engine_id to Secret Manager ───────────────────────────
       # The frontend reads this secret at container startup via the REST API.
 
       - name: Update agent engine ID in Secret Manager
-        if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
+        if: steps.agent_id.outputs.AGENT_ENGINE_ID != ''
         run: |
-          printf '%s' "${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" | \
+          printf '%s' "${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" | \
             gcloud secrets versions add agent-engine-id \
               --project=${{ env.PROJECT_ID }} \
               --data-file=-
@@ -267,22 +308,36 @@ jobs:
       # contains only GE registration resources.
 
       - name: Terraform Init (shells)
-        if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
+        if: steps.agent_id.outputs.AGENT_ENGINE_ID != ''
         working-directory: deployment/terraform/shells
         run: |
           terraform init \
             -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
             -backend-config="prefix=${{ github.event.repository.name }}/${{ github.ref_name }}-shells"
 
-      - name: Terraform Apply (shells — GE registration)
-        if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
+      - name: Force-unlock Terraform state (shells)
+        if: inputs.force_unlock_terraform == true && steps.agent_id.outputs.AGENT_ENGINE_ID != ''
         working-directory: deployment/terraform/shells
         run: |
-          terraform apply -auto-approve \
+          echo "Attempting to force-unlock stale Terraform state lock (shells)..."
+          LOCK_ID=$(terraform plan -lock=false -detailed-exitcode 2>&1 \
+            | grep -oP 'ID:\s+\K\d+' || true)
+          if [ -n "$LOCK_ID" ]; then
+            echo "Found lock ID: $LOCK_ID — force-unlocking..."
+            terraform force-unlock -force "$LOCK_ID"
+          else
+            echo "No stale lock found."
+          fi
+
+      - name: Terraform Apply (shells — GE registration)
+        if: steps.agent_id.outputs.AGENT_ENGINE_ID != ''
+        working-directory: deployment/terraform/shells
+        run: |
+          terraform apply -auto-approve -lock-timeout=5m \
             -var="deploy_project_id=${{ env.PROJECT_ID }}" \
             -var="region=${{ env.REGION }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" \
+            -var="agent_engine_id=${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" \
             -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME || '' }}" \
             -var="ge_app_staging=${{ vars.GE_APP_STAGING || '' }}" \
             -var="ge_app_prod=${{ vars.GE_APP_PROD || '' }}"
@@ -324,8 +379,8 @@ jobs:
           echo "| Agents       | Updated (always) |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend     | ${{ steps.flags.outputs.frontend == 'true' && 'Updated' || 'Unchanged' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Cocktail MCP URL:** ${{ steps.mcp_urls.outputs.CT_MCP_SERVER_URL }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Weather MCP URL:** ${{ steps.mcp_urls.outputs.WEA_MCP_SERVER_URL }}" >> $GITHUB_STEP_SUMMARY
-          if [ -n "${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" ]; then
-            echo "**Agent Engine ID:** ${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Cocktail MCP URL:** ${{ steps.tf_outputs.outputs.CT_MCP_SERVER_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Weather MCP URL:** ${{ steps.tf_outputs.outputs.WEA_MCP_SERVER_URL }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" ]; then
+            echo "**Agent Engine ID:** ${{ steps.agent_id.outputs.AGENT_ENGINE_ID }}" >> $GITHUB_STEP_SUMMARY
           fi

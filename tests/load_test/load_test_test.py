@@ -36,7 +36,9 @@ engine_id = parts[5]
 
 # Convert remote agent engine ID to streaming URL.
 base_url = f"https://{location}-aiplatform.googleapis.com"
-url_path = f"/v1/projects/{project_id}/locations/{location}/reasoningEngines/{engine_id}:streamQuery"
+url_path = (
+    f"/v1/projects/{project_id}/locations/{location}/reasoningEngines/{engine_id}:streamQuery"
+)
 
 logger.info("Using remote agent engine ID: %s", remote_agent_engine_id)
 logger.info("Using base URL: %s", base_url)
@@ -98,9 +100,7 @@ class ChatStreamUser(HttpUser):
                                 # Flag any non-2xx codes as errors
                                 if event_data["code"] >= 400:
                                     has_error = True
-                                    error_msg = event_data.get(
-                                        "message", "Unknown error"
-                                    )
+                                    error_msg = event_data.get("message", "Unknown error")
                                     response.failure(f"Error in response: {error_msg}")
                                     logger.error(
                                         "Received error response: code=%s, message=%s",

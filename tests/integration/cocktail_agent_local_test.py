@@ -121,9 +121,7 @@ async def test_cocktail_agent_local():
     # 2. Get Agent Card
     print("Fetching agent card...")
     request = build_get_request(None)
-    response = await a2a_agent.handle_authenticated_agent_card(
-        request=request, context=None
-    )
+    response = await a2a_agent.handle_authenticated_agent_card(request=request, context=None)
     print(f"Agent Name: {response.name}")
     print(f"Skills: {len(response.skills)}")
 
@@ -151,7 +149,7 @@ async def test_cocktail_agent_local():
         response2 = await a2a_agent.on_get_task(request=request, context=None)
 
         status = response2["status"]["state"]
-        print(f"Poll {i+1}: {status}")
+        print(f"Poll {i + 1}: {status}")
 
         if status == "TASK_STATE_COMPLETED":
             for artifact in response2.get("artifacts", []):

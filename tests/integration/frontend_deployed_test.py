@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Test the deployed Gradio frontend on Cloud Run."""
 
-
 import requests
 
 FRONTEND_URL = "https://a2a-frontend-496235138247.us-central1.run.app"
@@ -18,10 +17,7 @@ def test_frontend_health():
         if response.status_code == 200:
             print("✓ Frontend is accessible!")
             # Check if it's the Gradio interface
-            if (
-                "gradio" in response.text.lower()
-                or "a2a host agent" in response.text.lower()
-            ):
+            if "gradio" in response.text.lower() or "a2a host agent" in response.text.lower():
                 print("✓ Gradio interface detected!")
                 return True
             else:

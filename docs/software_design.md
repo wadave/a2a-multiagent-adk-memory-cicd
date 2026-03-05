@@ -30,29 +30,29 @@ The following diagram illustrates the system's core components and their interac
 graph TD
     User((User)) -->|HTTPS| CustomUI[Gradio Frontend]
     User((User)) -->|OAuth| GeminiEnt[Gemini Enterprise]
-    
+
     subgraph "Google Cloud Platform"
         CustomUI -->|A2A Protocol| Orchestrator[Orchestrator Agent - A2A Host]
         GeminiEnt -->|A2A Protocol| Orchestrator
-        
+
         Orchestrator -->|Internal| MemoryBank[(Vertex AI Memory Bank)]
-        
+
         subgraph "Specialist Layer"
             Orchestrator -->|A2A Protocol| Specialist1[Cocktail Agent]
             Orchestrator -->|A2A Protocol| Specialist2[Weather Agent]
         end
-        
+
         subgraph "MCP Layer"
             Specialist1 -->|MCP/SSE| MCPServer1[Cocktail MCP Server]
             Specialist2 -->|MCP/SSE| MCPServer2[Weather MCP Server]
         end
-        
+
         subgraph "External Integration"
             MCPServer1 -->|API| CocktailAPI[TheCocktailDB]
             MCPServer2 -->|API| WeatherAPI[National Weather Service]
         end
     end
-    
+
     subgraph "Security & Identity"
         IAM[Google Cloud IAM] -.-> Orchestrator
         IAM -.-> Specialist1
@@ -192,4 +192,3 @@ The project employs a multi-tiered testing strategy:
 ## 9. Appendices
 
 - **Source Code**: [GitHub Repository](https://github.com/wadave/a2a-multiagent-adk-memory-cicd)
-

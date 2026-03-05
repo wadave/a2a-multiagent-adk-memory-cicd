@@ -29,3 +29,19 @@ output "frontend_name" {
   description = "Resource name of the A2A Frontend"
   value       = google_cloud_run_v2_service.a2a_frontend.name
 }
+
+# Agent Engine resource names — used by CI/CD and shells root
+output "hosting_agent_engine_id" {
+  description = "Resource name of the Hosting Agent Engine (for GE registration and frontend)"
+  value       = google_vertex_ai_reasoning_engine.agent["hosting"].name
+}
+
+output "cocktail_agent_engine_id" {
+  description = "Resource name of the Cocktail Agent Engine"
+  value       = google_vertex_ai_reasoning_engine.agent["cocktail"].name
+}
+
+output "weather_agent_engine_id" {
+  description = "Resource name of the Weather Agent Engine"
+  value       = google_vertex_ai_reasoning_engine.agent["weather"].name
+}

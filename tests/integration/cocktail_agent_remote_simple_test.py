@@ -52,7 +52,9 @@ async def test_remote_cocktail_agent():
 
     # Get the remote agent
     print(f"Getting remote agent (ID: {cocktail_agent_id})...")
-    agent_resource_name = f"projects/{project_number}/locations/{location}/reasoningEngines/{cocktail_agent_id}"
+    agent_resource_name = (
+        f"projects/{project_number}/locations/{location}/reasoningEngines/{cocktail_agent_id}"
+    )
 
     config = {
         "http_options": {
@@ -128,7 +130,7 @@ async def test_remote_cocktail_agent():
             response2 = await remote_agent.on_get_task(request=request, context=None)
 
             status = response2["status"]["state"]
-            print(f"Poll {i+1}: {status}")
+            print(f"Poll {i + 1}: {status}")
 
             if status == "TASK_STATE_COMPLETED":
                 print("\n=== Answer ===")

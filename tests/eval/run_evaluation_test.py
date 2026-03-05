@@ -20,9 +20,7 @@ import logging
 import sys
 from pathlib import Path
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -56,19 +54,13 @@ def calculate_rubric_score(example: dict, response: str) -> dict[str, float]:
     # Relevance: Check if response contains expected content
     if "expected_response_contains" in example:
         expected_terms = example["expected_response_contains"]
-        found_count = sum(
-            1 for term in expected_terms if term.lower() in response.lower()
-        )
-        scores["relevance"] = (
-            found_count / len(expected_terms) if expected_terms else 1.0
-        )
+        found_count = sum(1 for term in expected_terms if term.lower() in response.lower())
+        scores["relevance"] = found_count / len(expected_terms) if expected_terms else 1.0
     else:
         scores["relevance"] = 0.9  # Default high score if no specific expectations
 
     # Helpfulness: Check response length and structure
-    if len(response) > 50 and any(
-        marker in response for marker in [":", "-", "*", "#"]
-    ):
+    if len(response) > 50 and any(marker in response for marker in [":", "-", "*", "#"]):
         scores["helpfulness"] = 1.0
     elif len(response) > 20:
         scores["helpfulness"] = 0.7
@@ -146,9 +138,7 @@ def evaluate_example(example: dict, config: dict) -> dict:
     result["passed"] = avg_score >= threshold
 
     if not result["passed"]:
-        result["notes"].append(
-            f"Average score {avg_score:.2f} below threshold {threshold}"
-        )
+        result["notes"].append(f"Average score {avg_score:.2f} below threshold {threshold}")
 
     return result
 

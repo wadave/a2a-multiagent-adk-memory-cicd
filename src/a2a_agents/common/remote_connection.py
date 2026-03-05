@@ -15,6 +15,7 @@
 import logging
 from collections.abc import Callable
 
+from a2a.client import Client, ClientFactory
 from a2a.types import (
     AgentCard,
     Message,
@@ -23,8 +24,6 @@ from a2a.types import (
     TaskState,
     TaskStatusUpdateEvent,
 )
-
-from a2a.client import Client, ClientFactory
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +79,7 @@ class RemoteAgentConnections:
                     return event[0]
                 lastTask = event[0]
         except Exception as e:
-            logger.error(
-                f"Exception in send_message to {self.card.name}: {e}", exc_info=True
-            )
+            logger.error(f"Exception in send_message to {self.card.name}: {e}", exc_info=True)
             raise
         return lastTask
 

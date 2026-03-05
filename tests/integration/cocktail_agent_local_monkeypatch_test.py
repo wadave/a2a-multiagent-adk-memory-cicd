@@ -131,9 +131,7 @@ async def test_agent_locally():
 
     print("\n--- Getting Agent Card ---")
     request = build_get_request(None)
-    response = await a2a_agent.handle_authenticated_agent_card(
-        request=request, context=None
-    )
+    response = await a2a_agent.handle_authenticated_agent_card(request=request, context=None)
     # response is an AgentCard object if successful
     print(f"Agent Name: {getattr(response, 'name', 'Unknown')}")
 
@@ -159,7 +157,7 @@ async def test_agent_locally():
         request = build_get_request(task_data)
         response = await a2a_agent.on_get_task(request=request, context=None)
         state = response.get("status", {}).get("state")
-        print(f"Poll {i+1} - Task State: {state}")
+        print(f"Poll {i + 1} - Task State: {state}")
 
         if state == "TASK_STATE_COMPLETED":
             for artifact in response.get("artifacts", []):

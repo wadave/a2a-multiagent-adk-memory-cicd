@@ -224,6 +224,7 @@ tfplan
 # rendered secrets (OAuth client IDs/secrets) from template variables.
 deployment/terraform/modules/**/build/
 
+
 # ==========================
 # Project Specific / Secrets
 # ==========================
@@ -262,6 +263,7 @@ src/google/
 # Configuration to ignore
 #.pre-commit-config.yaml
 .requirements.txt
+!deployment/terraform/dummy/**/.requirements.txt
 
 # Docker override files (local env-specific settings)
 docker-compose.override.yml

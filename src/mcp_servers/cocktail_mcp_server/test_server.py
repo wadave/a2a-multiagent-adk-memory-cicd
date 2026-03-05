@@ -28,9 +28,7 @@ async def test_server():
         for tool in tools:
             print(f">>> 🛠️  Tool found: {tool.name}")
         # Call add tool
-        result = await client.call_tool(
-            "search_cocktail_by_name", {"name": "margarita"}
-        )
+        result = await client.call_tool("search_cocktail_by_name", {"name": "margarita"})
         print(f"<<< ✅ Result: {result[0].text}")
 
 

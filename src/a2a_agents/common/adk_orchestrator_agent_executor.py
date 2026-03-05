@@ -18,25 +18,26 @@ from abc import ABC, abstractmethod
 from typing import NoReturn
 
 import httpx
-from a2a.types import Role, TaskState, TextPart, UnsupportedOperationError
-from a2a.utils.errors import ServerError
-from aiobreaker import CircuitBreaker, CircuitBreakerError
-from dotenv import load_dotenv
-from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
-from google.genai import types
 
 # A2A
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
+from a2a.types import Role, TaskState, TextPart, UnsupportedOperationError
 from a2a.utils import new_agent_text_message
+from a2a.utils.errors import ServerError
+from aiobreaker import CircuitBreaker, CircuitBreakerError
+from dotenv import load_dotenv
+from google.adk import Runner
+from google.adk.artifacts import InMemoryArtifactService
+from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
+from google.adk.sessions import InMemorySessionService, VertexAiSessionService
+from google.genai import types
+
 from a2a_agents.common.adk_base_mcp_agent_executor import PersistentVertexAiMemoryBankService
 from a2a_agents.common.adk_orchestrator_agent import get_orchestrator_agent
 from a2a_agents.common.auth_utils import GoogleAuth
 from a2a_agents.common.logging_utils import setup_cloud_logging
-from google.adk import Runner
-from google.adk.artifacts import InMemoryArtifactService
-from google.adk.sessions import InMemorySessionService, VertexAiSessionService
 
 # Set logging
 logging.getLogger().setLevel(logging.INFO)
@@ -54,11 +55,13 @@ llm_api_breaker = CircuitBreaker(fail_max=3, timeout_duration=30)
 
 class CircuitBreakerTransport(httpx.AsyncBaseTransport):
     """Wraps an httpx transport to enforce an aiobreaker circuit breaker."""
+
     def __init__(self, underlying: httpx.AsyncBaseTransport):
         self._underlying = underlying
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         try:
+
             @llm_api_breaker
             async def _make_request():
                 response = await self._underlying.handle_async_request(request)
@@ -276,7 +279,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
                     # Artifacts are the "outputs" or "results" of a task
                     # They're separate from status messages
                     await updater.add_artifact(
-                        [TextPart(text=answer)], # type: ignore
+                        [TextPart(text=answer)],  # type: ignore
                         name="answer",  # Name helps clients identify artifacts
                     )
 
@@ -305,7 +308,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         """
         runner = self.runner
         if runner is None:
-             raise ServerError(message="Runner not initialized")
+            raise ServerError(message="Runner not initialized")
 
         if isinstance(runner.session_service, InMemorySessionService):
             # For in-memory sessions, we can use the context_id directly
@@ -336,7 +339,6 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
 
         return session
 
-
     def _get_user_id(self, context: RequestContext) -> str:
         """Extracts the user ID from the request context headers."""
         # Try common headers for Cloud Run / IAP / OIDC proxy
@@ -366,9 +368,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         # Join all text parts with space
         return " ".join(text_parts) if text_parts else "No answer found."
 
-    async def cancel(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> NoReturn:
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> NoReturn:
         """Handle task cancellation requests.
 
         For long-running agents, this would:
@@ -376,8 +376,6 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         2. Clean up resources
         3. Update task state to 'cancelled'
         """
-        logging.warning(
-            f"Cancellation requested for task {context.task_id}, but not supported."
-        )
+        logging.warning(f"Cancellation requested for task {context.task_id}, but not supported.")
         # Inform client that cancellation isn't supported
         raise ServerError(error=UnsupportedOperationError())

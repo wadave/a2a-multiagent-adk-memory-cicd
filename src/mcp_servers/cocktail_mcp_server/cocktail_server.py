@@ -65,7 +65,9 @@ async def make_cocktaildb_request(
             return None
 
         # Handle cases where the primary key (drinks/ingredients) might be null
-        if isinstance(data, dict) and (data.get("drinks") is None and data.get("ingredients") is None):
+        if isinstance(data, dict) and (
+            data.get("drinks") is None and data.get("ingredients") is None
+        ):
             if "drinks" in data or "ingredients" in data:
                 return None  # Explicitly no results found based on API structure
         return data

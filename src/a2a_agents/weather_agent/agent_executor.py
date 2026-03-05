@@ -70,16 +70,8 @@ class WeatherAgentExecutor(AdkBaseMcpAgentExecutor):
                 },
                 {"managed_memory_topic": {"managed_topic_enum": "USER_PERSONAL_INFO"}},
                 {"managed_memory_topic": {"managed_topic_enum": "USER_PREFERENCES"}},
-                {
-                    "managed_memory_topic": {
-                        "managed_topic_enum": "KEY_CONVERSATION_DETAILS"
-                    }
-                },
-                {
-                    "managed_memory_topic": {
-                        "managed_topic_enum": "EXPLICIT_INSTRUCTIONS"
-                    }
-                },
+                {"managed_memory_topic": {"managed_topic_enum": "KEY_CONVERSATION_DETAILS"}},
+                {"managed_memory_topic": {"managed_topic_enum": "EXPLICIT_INSTRUCTIONS"}},
             ],
         }
 
@@ -96,7 +88,7 @@ class WeatherAgentExecutor(AdkBaseMcpAgentExecutor):
                         },
                         "customization_configs": [user_preferences_config],
                     }
-                }
+                },
             }
         )
         agent_engine_id = agent_engine.api_resource.name.split("/")[-1]

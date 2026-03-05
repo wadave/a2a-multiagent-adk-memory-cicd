@@ -63,16 +63,12 @@ class TestAgentEvaluation:
         tool_trajectory_threshold = eval_config["criteria"]["tool_trajectory_avg_score"]
         assert tool_trajectory_threshold == 0.9
 
-        rubric_config = eval_config["criteria"][
-            "rubric_based_final_response_quality_v1"
-        ]
+        rubric_config = eval_config["criteria"]["rubric_based_final_response_quality_v1"]
         assert rubric_config["threshold"] == 0.8
 
     def test_eval_config_rubrics(self, eval_config):
         """Verify all required rubrics are defined."""
-        rubric_config = eval_config["criteria"][
-            "rubric_based_final_response_quality_v1"
-        ]
+        rubric_config = eval_config["criteria"]["rubric_based_final_response_quality_v1"]
         rubrics = rubric_config["rubrics"]
 
         rubric_ids = [r["rubricId"] for r in rubrics]
@@ -150,7 +146,9 @@ class TestAgentResponseQuality:
 
         # These queries should be routed to Weather Agent
         for query in weather_queries:
-            assert any(word in query.lower() for word in ["weather", "forecast", "rain", "temperature"])
+            assert any(
+                word in query.lower() for word in ["weather", "forecast", "rain", "temperature"]
+            )
 
     def test_cocktail_query_routing(self):
         """Test that cocktail queries should route to Cocktail Agent."""
@@ -164,7 +162,15 @@ class TestAgentResponseQuality:
         for query in cocktail_queries:
             assert any(
                 word in query.lower()
-                for word in ["cocktail", "margarita", "recipe", "ingredients", "drink", "make", "manhattan"]
+                for word in [
+                    "cocktail",
+                    "margarita",
+                    "recipe",
+                    "ingredients",
+                    "drink",
+                    "make",
+                    "manhattan",
+                ]
             )
 
     def test_general_query_no_routing(self):
@@ -177,9 +183,7 @@ class TestAgentResponseQuality:
 
         # These queries should not contain agent-specific keywords
         for query in general_queries:
-            assert not any(
-                word in query.lower() for word in ["weather", "cocktail", "forecast"]
-            )
+            assert not any(word in query.lower() for word in ["weather", "cocktail", "forecast"])
 
     def test_response_format_markdown(self):
         """Test that responses should be formatted in Markdown."""
@@ -232,9 +236,7 @@ class TestMultiAgentCoordination:
 
     def test_complex_query_routing(self):
         """Test complex queries requiring multiple agents."""
-        complex_query = (
-            "What's the weather in Miami and what cocktail should I drink there?"
-        )
+        complex_query = "What's the weather in Miami and what cocktail should I drink there?"
 
         # This query should route to both agents
         assert "weather" in complex_query.lower()

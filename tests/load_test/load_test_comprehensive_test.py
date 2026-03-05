@@ -166,17 +166,10 @@ class HostingAgentUser(HttpUser):
                                     response_data = event_data  # noqa: F841
 
                                     # Check for errors
-                                    if (
-                                        "code" in event_data
-                                        and event_data["code"] >= 400
-                                    ):
+                                    if "code" in event_data and event_data["code"] >= 400:
                                         has_error = True
-                                        error_msg = event_data.get(
-                                            "message", "Unknown error"
-                                        )
-                                        logger.error(
-                                            f"Error in {category} query: {error_msg}"
-                                        )
+                                        error_msg = event_data.get("message", "Unknown error")
+                                        logger.error(f"Error in {category} query: {error_msg}")
                                         response.failure(f"Error: {error_msg}")
                                         return
                             except json.JSONDecodeError:
@@ -195,9 +188,7 @@ class HostingAgentUser(HttpUser):
                     else:
                         logger.warning(f"Failed {category} query: {message[:50]}...")
                 else:
-                    logger.error(
-                        f"Unexpected status {response.status_code} for {category} query"
-                    )
+                    logger.error(f"Unexpected status {response.status_code} for {category} query")
                     response.failure(f"Status {response.status_code}")
 
         except Exception as e:

@@ -222,12 +222,7 @@ async def get_forecast_by_city(city: str, state: str) -> str:
     # --- Input Validation ---
     if not city or not isinstance(city, str):
         return "Invalid city name provided."
-    if (
-        not state
-        or not isinstance(state, str)
-        or len(state) != 2
-        or not state.isalpha()
-    ):
+    if not state or not isinstance(state, str) or len(state) != 2 or not state.isalpha():
         return "Invalid state code. Please provide the two-letter US state abbreviation (e.g., CA)."
 
     city_name = city.strip()
@@ -238,9 +233,7 @@ async def get_forecast_by_city(city: str, state: str) -> str:
     location = None
     try:
         # Run the synchronous (blocking) geocode call in a separate thread
-        location = await asyncio.to_thread(
-            geolocator.geocode, query, timeout=GEOCODE_TIMEOUT
-        )
+        location = await asyncio.to_thread(geolocator.geocode, query, timeout=GEOCODE_TIMEOUT)
 
     except GeocoderTimedOut:
         logger.error(f"Geocoding timeout for {query}")
@@ -262,7 +255,6 @@ async def get_forecast_by_city(city: str, state: str) -> str:
 
 
 # --- Server Execution ---
-
 
 
 if __name__ == "__main__":

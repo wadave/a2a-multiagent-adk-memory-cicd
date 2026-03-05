@@ -55,8 +55,6 @@ async def test_weather_mcp_get_forecast_by_city():
     auth = BearerAuth(token) if token else None
 
     async with Client(WEATHER_MCP_URL, auth=auth) as client:
-        result = await client.call_tool(
-            "get_forecast_by_city", {"city": "New York", "state": "NY"}
-        )
+        result = await client.call_tool("get_forecast_by_city", {"city": "New York", "state": "NY"})
         assert len(result) > 0
         assert result[0].text

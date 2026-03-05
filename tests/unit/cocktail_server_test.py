@@ -133,9 +133,7 @@ class TestFormatIngredient:
         assert ("y" * 301) not in result
 
     def test_missing_description_key(self):
-        ingredient = {
-            k: v for k, v in SAMPLE_INGREDIENT.items() if k != "strDescription"
-        }
+        ingredient = {k: v for k, v in SAMPLE_INGREDIENT.items() if k != "strDescription"}
         result = format_ingredient(ingredient)
         assert "No description available." in result
 
@@ -164,9 +162,7 @@ class TestMakeCocktaildbRequest:
     async def test_success(self):
         result = await make_cocktaildb_request("search.php", params={"s": "margarita"})
         assert result == {"drinks": [SAMPLE_DRINK]}
-        self.mock_client.get.assert_awaited_once_with(
-            "search.php", params={"s": "margarita"}
-        )
+        self.mock_client.get.assert_awaited_once_with("search.php", params={"s": "margarita"})
 
     async def test_null_string_response(self):
         self.mock_response.json.return_value = "null"

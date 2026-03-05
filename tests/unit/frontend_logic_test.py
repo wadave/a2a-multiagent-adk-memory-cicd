@@ -180,9 +180,7 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     @patch("frontend.main.get_agent_card")
     @patch("frontend.main.httpx.AsyncClient")
-    async def test_error_handling_in_get_response(
-        self, mock_client_class, mock_get_card
-    ):
+    async def test_error_handling_in_get_response(self, mock_client_class, mock_get_card):
         """Verify error handling in get_response_from_agent."""
         # Mock agent card retrieval to raise an exception
         mock_get_card.side_effect = Exception("Test error")

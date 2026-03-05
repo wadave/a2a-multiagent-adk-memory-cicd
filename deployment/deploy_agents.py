@@ -11,44 +11,44 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import importlib
 import logging
 import os
 import sys
-import tomllib
 
 from dotenv import load_dotenv
 
-# Add src to path for packaging logic so that a2a_agents are importable
+# Add src to path so that a2a_agents are importable
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import vertexai
-from google.genai import types
-from vertexai.preview.reasoning_engines import A2aAgent
-
-from a2a_agents.cocktail_agent.agent_executor import CocktailAgentExecutor
-from a2a_agents.cocktail_agent.cocktail_agent_card import cocktail_agent_card
-from a2a_agents.hosting_agent.agent_executor import HostingAgentExecutor
-from a2a_agents.hosting_agent.hosting_agent_card import hosting_agent_card
-from a2a_agents.weather_agent.agent_executor import WeatherAgentExecutor
-from a2a_agents.weather_agent.weather_agent_card import weather_agent_card
+from vertexai._genai import _agent_engines_utils
+from vertexai._genai.types import AgentEngineConfig
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
-def get_agent_engine_requirements() -> list[str]:
-    """Read agent-engine requirements from pyproject.toml dynamically."""
-    pyproject_path = os.path.join(os.path.dirname(__file__), "..", "pyproject.toml")
-    with open(pyproject_path, "rb") as f:
-        data = tomllib.load(f)
-    return data.get("project", {}).get("optional-dependencies", {}).get("agent-engine", [])
+def generate_class_methods(entrypoint_module: str, entrypoint_object: str) -> list[dict]:
+    """Generate class_methods spec by importing the agent entrypoint."""
+    module = importlib.import_module(entrypoint_module)
+    agent_instance = getattr(module, entrypoint_object)
+    registered_operations = _agent_engines_utils._get_registered_operations(agent=agent_instance)
+    class_methods_spec = _agent_engines_utils._generate_class_methods_spec_or_raise(
+        agent=agent_instance,
+        operations=registered_operations,
+    )
+    return [_agent_engines_utils._to_dict(m) for m in class_methods_spec]
 
 
 def find_existing_agent(client, display_name):
     """Find an existing agent engine by display_name. Returns resource name if found."""
     try:
         for agent_engine in client.agent_engines.list():
-            engine_display_name = getattr(agent_engine.api_resource, 'display_name', '') or getattr(agent_engine.api_resource, 'displayName', '')
-            engine_name = getattr(agent_engine.api_resource, 'name', '')
+            engine_display_name = getattr(agent_engine.api_resource, "display_name", "") or getattr(
+                agent_engine.api_resource, "displayName", ""
+            )
+            engine_name = getattr(agent_engine.api_resource, "name", "")
             if engine_display_name == display_name:
                 logging.info(f"Found existing agent engine '{display_name}': {engine_name}")
                 return engine_name
@@ -57,89 +57,81 @@ def find_existing_agent(client, display_name):
     return None
 
 
-def deploy_agent(client, agent_name, agent_card, executor_builder, project_id, project_number, location, bucket_name, extra_env_vars, extra_packages):
-    agent = A2aAgent(agent_card=agent_card, agent_executor_builder=executor_builder)
+def deploy_agent(
+    client,
+    display_name: str,
+    description: str,
+    entrypoint_module: str,
+    entrypoint_object: str,
+    requirements_file: str,
+    source_packages: list[str],
+    env_vars: dict[str, str],
+    project_number: str,
+    service_account: str | None = None,
+) -> str:
+    """Deploy or update a single agent using source-based deployment.
 
-    env_vars = {
-        "PROJECT_ID": project_id,
-        "LOCATION": location,
-        "BUCKET": bucket_name,
-        "GOOGLE_GENAI_USE_VERTEXAI": "TRUE",
-        "DEBUG_MODE": "False",
-    }
-    env_vars.update(extra_env_vars)
-
+    Uses source_code_spec (source_packages + entrypoint) instead of
+    package_spec (pickle). This is compatible with Terraform-created
+    Agent Engine shells that use source_code_spec.
+    """
     # Vertex AI rejects empty string env var values
     env_vars = {k: v for k, v in env_vars.items() if v}
 
-    logging.info(f"Deploying {agent_name} to Agent Engine...")
+    logging.info(f"Deploying {display_name} to Agent Engine...")
 
-    if "a2a_agents" not in extra_packages:
-        extra_packages.append("a2a_agents")
+    # Generate class_methods spec from the entrypoint
+    try:
+        class_methods = generate_class_methods(entrypoint_module, entrypoint_object)
+    except Exception as e:
+        logging.warning(f"Could not generate class_methods for {display_name}: {e}")
+        class_methods = []
 
-    import importlib.util
+    sa = service_account or f"{project_number}-compute@developer.gserviceaccount.com"
 
-    a2a_spec = importlib.util.find_spec("a2a")
-    if a2a_spec and a2a_spec.submodule_search_locations:
-        a2a_path = a2a_spec.submodule_search_locations[0]
-        if a2a_path not in extra_packages:
-            extra_packages.append(a2a_path)
-
-    google_spec = importlib.util.find_spec("google")
-    if google_spec and google_spec.submodule_search_locations:
-        google_path = google_spec.submodule_search_locations[0]
-        if google_path not in extra_packages:
-            extra_packages.append(google_path)
-
-    config = {
-        "display_name": agent.agent_card.name,
-        "description": agent.agent_card.description,
-        "service_account": f"{project_number}-compute@developer.gserviceaccount.com",
-        "requirements": get_agent_engine_requirements(),
-        "http_options": {
-            "base_url": f"https://{location}-aiplatform.googleapis.com",
-            "api_version": "v1beta1",
-        },
-        "staging_bucket": f"gs://{bucket_name}",
-        "env_vars": env_vars,
-        "extra_packages": extra_packages
-    }
-
-    existing_name = find_existing_agent(client, agent.agent_card.name)
-    if existing_name:
-        logging.info(f"Agent '{agent.agent_card.name}' already exists. Updating...")
-        remote_agent = client.agent_engines.update(
-            name=existing_name,
-            agent=agent,
-            config=config
-        )
-        logging.info(f"Updated {agent_name} successfully: {remote_agent.api_resource.name}")
-        return remote_agent.api_resource.name
-
-    remote_agent = client.agent_engines.create(
-        agent=agent,
-        config=config
+    config = AgentEngineConfig(
+        display_name=display_name,
+        description=description,
+        source_packages=source_packages,
+        entrypoint_module=entrypoint_module,
+        entrypoint_object=entrypoint_object,
+        class_methods=class_methods,
+        env_vars=env_vars,
+        service_account=sa,
+        requirements_file=requirements_file,
     )
 
-    # Fix backend bug: Vertex AI ignores displayName on creation, so we update it immediately.
+    existing_name = find_existing_agent(client, display_name)
+    if existing_name:
+        logging.info(f"Agent '{display_name}' already exists. Updating...")
+        remote_agent = client.agent_engines.update(
+            name=existing_name,
+            config=config,
+        )
+        logging.info(f"Updated {display_name} successfully: {remote_agent.api_resource.name}")
+        return remote_agent.api_resource.name
+
+    remote_agent = client.agent_engines.create(config=config)
+
+    # Vertex AI may ignore displayName on creation — patch it immediately.
     try:
         client.agent_engines.update(
             name=remote_agent.api_resource.name,
-            config={
-                "display_name": agent.agent_card.name,
-                "description": agent.agent_card.description
-            }
+            config=AgentEngineConfig(
+                display_name=display_name,
+                description=description,
+            ),
         )
-        logging.info(f"Patched display name for {agent_name}")
+        logging.info(f"Patched display name for {display_name}")
     except Exception as patch_e:
-        logging.warning(f"Failed to patch display name for {agent_name}: {patch_e}")
+        logging.warning(f"Failed to patch display name for {display_name}: {patch_e}")
 
-    logging.info(f"Deployed {agent_name} successfully: {remote_agent.api_resource.name}")
+    logging.info(f"Deployed {display_name} successfully: {remote_agent.api_resource.name}")
     return remote_agent.api_resource.name
 
 
 def main():
-    # Change working directory to src so extra_packages path resolves correctly in Reasoning Engine
+    # Change working directory to src so source_packages path resolves correctly
     src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../src"))
     os.chdir(src_dir)
     logging.info(f"Changed working directory to {src_dir}")
@@ -164,79 +156,83 @@ def main():
         sys.exit(1)
 
     vertexai.init(project=project_id, location=location, staging_bucket=f"gs://{bucket_name}")
-    client = vertexai.Client(
-        project=project_id,
-        location=location,
-        http_options=types.HttpOptions(
-            api_version="v1beta1", base_url=f"https://{location}-aiplatform.googleapis.com/"
-        ),
+    client = vertexai.Client(project=project_id, location=location)
+
+    # Requirements file is generated by CI/CD via `uv export` before this script runs.
+    requirements_file = os.environ.get(
+        "REQUIREMENTS_FILE",
+        os.path.join(src_dir, ".requirements.txt"),
     )
+    if not os.path.exists(requirements_file):
+        logging.error(f"Requirements file not found: {requirements_file}. Run 'uv export' first.")
+        sys.exit(1)
 
-    deployed_agents = {}
+    source_packages = ["a2a_agents"]
 
+    common_env = {
+        "PROJECT_ID": project_id,
+        "LOCATION": location,
+        "BUCKET": bucket_name,
+        "GOOGLE_GENAI_USE_VERTEXAI": "TRUE",
+        "GOOGLE_GENAI_MODEL": google_genai_model,
+        "DEBUG_MODE": "False",
+    }
+
+    # Deploy Cocktail Agent
     try:
         ct_agent_name = deploy_agent(
             client,
-            "Cocktail ADK Agent",
-            cocktail_agent_card,
-            CocktailAgentExecutor,
-            project_id,
-            project_number,
-            location,
-            bucket_name,
-            {
-                "CT_MCP_SERVER_URL": ct_mcp_url,
-                "GOOGLE_GENAI_MODEL": google_genai_model
-            },
-            ["a2a_agents"]
+            display_name="Cocktail Agent ADK-MB",
+            description="Cocktail domain agent (A2A)",
+            entrypoint_module="a2a_agents.cocktail_agent.agent_engine_app",
+            entrypoint_object="agent_engine",
+            requirements_file=requirements_file,
+            source_packages=source_packages,
+            env_vars={**common_env, "CT_MCP_SERVER_URL": ct_mcp_url},
+            project_number=project_number,
         )
-        deployed_agents["cocktail"] = ct_agent_name
     except Exception as e:
         logging.error(f"Failed to deploy Cocktail Agent: {e}")
         sys.exit(1)
 
+    # Deploy Weather Agent
     try:
         wea_agent_name = deploy_agent(
             client,
-            "Weather ADK Agent",
-            weather_agent_card,
-            WeatherAgentExecutor,
-            project_id,
-            project_number,
-            location,
-            bucket_name,
-            {
-                "WEA_MCP_SERVER_URL": wea_mcp_url,
-                "GOOGLE_GENAI_MODEL": google_genai_model
-            },
-            ["a2a_agents"]
+            display_name="Weather Agent ADK-MB",
+            description="Weather domain agent (A2A)",
+            entrypoint_module="a2a_agents.weather_agent.agent_engine_app",
+            entrypoint_object="agent_engine",
+            requirements_file=requirements_file,
+            source_packages=source_packages,
+            env_vars={**common_env, "WEA_MCP_SERVER_URL": wea_mcp_url},
+            project_number=project_number,
         )
-        deployed_agents["weather"] = wea_agent_name
     except Exception as e:
         logging.error(f"Failed to deploy Weather Agent: {e}")
         sys.exit(1)
 
+    # Compute A2A URLs from deployed agent resource names
     ct_agent_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{ct_agent_name}/a2a"
     wea_agent_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{wea_agent_name}/a2a"
 
+    # Deploy Hosting Agent (orchestrator)
     try:
         host_agent_name = deploy_agent(
             client,
-            "Hosting ADK Agent",
-            hosting_agent_card,
-            HostingAgentExecutor,
-            project_id,
-            project_number,
-            location,
-            bucket_name,
-            {
+            display_name="Hosting Agent ADK-MB",
+            description="Hosting orchestrator agent (ADK)",
+            entrypoint_module="a2a_agents.hosting_agent.agent_engine_app",
+            entrypoint_object="agent_engine",
+            requirements_file=requirements_file,
+            source_packages=source_packages,
+            env_vars={
+                **common_env,
                 "WEA_AGENT_URL": wea_agent_url,
                 "CT_AGENT_URL": ct_agent_url,
-                "GOOGLE_GENAI_MODEL": google_genai_model
             },
-            ["a2a_agents"]
+            project_number=project_number,
         )
-        deployed_agents["hosting"] = host_agent_name
     except Exception as e:
         logging.error(f"Failed to deploy Hosting Agent: {e}")
         sys.exit(1)

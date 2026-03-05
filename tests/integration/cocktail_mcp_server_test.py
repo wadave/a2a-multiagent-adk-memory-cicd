@@ -57,9 +57,7 @@ async def test_cocktail_mcp_search_by_name():
     auth = BearerAuth(token) if token else None
 
     async with Client(COCKTAIL_MCP_URL, auth=auth) as client:
-        result = await client.call_tool(
-            "search_cocktail_by_name", {"name": "margarita"}
-        )
+        result = await client.call_tool("search_cocktail_by_name", {"name": "margarita"})
         assert len(result) > 0
         assert result[0].text
         assert "margarita" in result[0].text.lower()

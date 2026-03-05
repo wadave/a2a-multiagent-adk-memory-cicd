@@ -50,9 +50,7 @@ def test_remote_agent(agent_id, agent_name, query):
 
 def main():
     test_remote_agent(COCKTAIL_AGENT_ID, "Cocktail Agent", "What is in a margarita?")
-    test_remote_agent(
-        WEATHER_AGENT_ID, "Weather Agent", "What is the weather in New York, NY?"
-    )
+    test_remote_agent(WEATHER_AGENT_ID, "Weather Agent", "What is the weather in New York, NY?")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ import logging
 import uuid
 
 import httpx
+from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a.types import (
     AgentCard,
     DataPart,
@@ -31,17 +32,16 @@ from a2a.types import (
     TransportProtocol,
 )
 from dotenv import load_dotenv
+from google import adk
+from google.adk import Agent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents.readonly_context import ReadonlyContext
+from google.adk.models import Gemini
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 
-from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a_agents.common.agent_configs import DEFAULT_MODEL
 from a2a_agents.common.remote_connection import RemoteAgentConnections, TaskUpdateCallback
-from google import adk
-from google.adk import Agent
-from google.adk.models import Gemini
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +63,7 @@ async def auto_save_session_to_memory_callback(callback_context: CallbackContext
     session = callback_context._invocation_context.session
     memory_service = callback_context._invocation_context.memory_service
 
-    logging.info(
-        f"Saving session {session.id} to memory bank for user_id={session.user_id}"
-    )
+    logging.info(f"Saving session {session.id} to memory bank for user_id={session.user_id}")
 
     try:
         await memory_service.add_session_to_memory(session)
@@ -242,9 +240,7 @@ Current agent: {current_agent["active_agent"]} """
 
         remote_agent_info = []
         for card in self.cards.values():
-            remote_agent_info.append(
-                {"name": card.name, "description": card.description}
-            )
+            remote_agent_info.append({"name": card.name, "description": card.description})
         return remote_agent_info
 
     async def send_message(
@@ -315,9 +311,7 @@ Current agent: {current_agent["active_agent"]} """
         response = []
         if task.status.message:
             # Assume the information is in the task message.
-            response.extend(
-                await convert_parts(task.status.message.parts, tool_context)
-            )
+            response.extend(await convert_parts(task.status.message.parts, tool_context))
         if task.artifacts:
             for artifact in task.artifacts:
                 response.extend(await convert_parts(artifact.parts, tool_context))
@@ -388,8 +382,6 @@ async def get_orchestrator_agent(
 
     # Initialize remote agents before creating the agent
     # This ensures agents are available when the orchestrator is first used
-    await orchestrator_agent_wrapper.init_remote_agent_addresses(
-        remote_agent_addresses
-    )
+    await orchestrator_agent_wrapper.init_remote_agent_addresses(remote_agent_addresses)
 
     return orchestrator_agent_wrapper.create_agent()

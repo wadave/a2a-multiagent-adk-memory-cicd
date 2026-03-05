@@ -28,9 +28,7 @@ async def test_server():
         for tool in tools:
             print(f">>> 🛠️  Tool found: {tool.name}")
         # Call add tool
-        result = await client.call_tool(
-            "get_forecast_by_city", {"city": "New York", "state": "NY"}
-        )
+        result = await client.call_tool("get_forecast_by_city", {"city": "New York", "state": "NY"})
         print(f"<<< ✅ Result: {result[0].text}")
 
 
