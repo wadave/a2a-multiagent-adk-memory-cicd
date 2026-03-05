@@ -51,8 +51,6 @@ jobs:
         with:
           # fetch-depth: 0 ensures the base commit from github.event.before is
           # always available, regardless of how many commits are in the push.
-          # With fetch-depth: 2, multi-commit pushes cause paths-filter to
-          # silently return false for every filter.
           fetch-depth: 0
 
       - name: Detect changed components
@@ -74,6 +72,9 @@ jobs:
               - '.github/workflows/deploy.yml'
             terraform:
               - 'deployment/terraform/**'
+              - '!deployment/terraform/shells/**'
+            terraform_shells:
+              - 'deployment/terraform/shells/**'
 
       # Merge change-detection results with manual workflow_dispatch overrides.
       # All subsequent steps read from steps.flags.outputs.* so the logic is
@@ -149,18 +150,9 @@ jobs:
             --tag gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb:latest \
             --project ${{ env.PROJECT_ID }}
 
-      # ── Single Terraform Apply ──────────────────────────────────────────────
-      # Reads the previously deployed agent_engine_id from Secret Manager
-      # (written by a prior run). "unset" is used as the safe default on first run,
-      # which causes the Gemini Enterprise registration module to be skipped.
-
-      - name: Get previous agent engine ID
-        id: prev_agent_id
-        run: |
-          AGENT_ID=$(gcloud secrets versions access latest \
-            --secret=agent-engine-id \
-            --project=${{ env.PROJECT_ID }} 2>/dev/null || echo "unset")
-          echo "AGENT_ENGINE_ID=${AGENT_ID}" >> $GITHUB_OUTPUT
+      # ── Terraform Apply — Infrastructure ──────────────────────────────────
+      # Creates Cloud Run shells (placeholder images), IAM, secrets, Model Armor API.
+      # Does NOT manage container images or GE registration.
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -172,7 +164,7 @@ jobs:
             --location=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }}
 
-      - name: Terraform Init
+      - name: Terraform Init (infra)
         working-directory: deployment/terraform
         run: |
           terraform init \
@@ -188,7 +180,7 @@ jobs:
           terraform state rm 'github_actions_environment_variable.ge_app_prod' || true
           terraform state rm 'github_actions_environment_variable.oauth_client_id_secret_name' || true
 
-      - name: Terraform Apply
+      - name: Terraform Apply (infra)
         working-directory: deployment/terraform
         run: |
           terraform apply -auto-approve \
@@ -197,11 +189,7 @@ jobs:
             -var="region=${{ env.REGION }}" \
             -var="project_number=${{ env.PROJECT_NUMBER }}" \
             -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=${{ steps.prev_agent_id.outputs.AGENT_ENGINE_ID }}" \
-            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME || '' }}" \
-            -var="ge_app_staging=${{ vars.GE_APP_STAGING || '' }}" \
-            -var="ge_app_prod=${{ vars.GE_APP_PROD || '' }}"
+            -var="repository_owner=${{ github.repository_owner }}"
 
       # ── Get MCP URLs from Terraform outputs ────────────────────────────────
 
@@ -212,13 +200,28 @@ jobs:
           echo "CT_MCP_SERVER_URL=$(terraform output -raw cocktail_mcp_server_url)" >> $GITHUB_OUTPUT
           echo "WEA_MCP_SERVER_URL=$(terraform output -raw weather_mcp_server_url)" >> $GITHUB_OUTPUT
 
+      # ── Deploy Cloud Run Services via gcloud ───────────────────────────────
+      # Terraform created the shells; gcloud updates them with real images.
+
+      - name: Deploy Cocktail MCP to Cloud Run
+        if: steps.flags.outputs.cocktail_mcp == 'true'
+        run: |
+          gcloud run deploy cocktail-remote-mcp-server-adk-mb \
+            --image gcr.io/${{ env.PROJECT_ID }}/cocktail-remote-mcp-server-adk-mb:latest \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }}
+
+      - name: Deploy Weather MCP to Cloud Run
+        if: steps.flags.outputs.weather_mcp == 'true'
+        run: |
+          gcloud run deploy weather-remote-mcp-server-adk-mb \
+            --image gcr.io/${{ env.PROJECT_ID }}/weather-remote-mcp-server-adk-mb:latest \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }}
+
       # ── Deploy Agents ───────────────────────────────────────────────────────
-      # No paths-filter guard: agent deployment runs on every push.
-      # paths-filter only covers the current push; if agent code changed in a
-      # prior push that failed or was skipped, those changes are invisible to
-      # the filter on the next push.  deploy_agents.py is idempotent — it
-      # updates existing Agent Engines and creates new ones — so always running
-      # it is safe and guarantees the deployed code is in sync with HEAD.
+      # Agent deployment always runs to keep deployed code in sync with HEAD.
+      # deploy_agents.py is idempotent — updates existing, creates new.
 
       - name: Install Python dependencies
         run: |
@@ -235,31 +238,20 @@ jobs:
         run: |
           uv run python deployment/deploy_agents.py
 
-      # ── Register agent with Gemini Enterprise ──────────────────────────────
-      # Re-run Terraform now that we have the freshly-deployed agent_engine_id.
-      # The first Terraform Apply above used the *previous* run's ID (from Secret
-      # Manager); this second apply passes the *current* ID so GE registration
-      # happens in the same pipeline run that deployed the agent.
+      # ── Deploy Frontend via gcloud ──────────────────────────────────────────
+      # Deployed after agents so AGENT_ENGINE_ID is available for env vars.
 
-      - name: Register agent with Gemini Enterprise
-        if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
-        working-directory: deployment/terraform
+      - name: Deploy Frontend to Cloud Run
+        if: steps.flags.outputs.frontend == 'true' || steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
         run: |
-          terraform apply -auto-approve \
-            -var="cicd_runner_project_id=${{ env.PROJECT_ID }}" \
-            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
-            -var="region=${{ env.REGION }}" \
-            -var="project_number=${{ env.PROJECT_NUMBER }}" \
-            -var="repository_name=${{ github.event.repository.name }}" \
-            -var="repository_owner=${{ github.repository_owner }}" \
-            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" \
-            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME || '' }}" \
-            -var="ge_app_staging=${{ vars.GE_APP_STAGING || '' }}" \
-            -var="ge_app_prod=${{ vars.GE_APP_PROD || '' }}"
+          gcloud run deploy a2a-frontend-adk-mb \
+            --image gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb:latest \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }} \
+            --set-env-vars "PROJECT_ID=${{ env.PROJECT_ID }},PROJECT_NUMBER=${{ env.PROJECT_NUMBER }},GOOGLE_CLOUD_LOCATION=${{ env.REGION }}"
 
       # ── Publish agent_engine_id to Secret Manager ───────────────────────────
-      # The frontend reads this secret at container startup via the REST API
-      # (see src/frontend/main.py).
+      # The frontend reads this secret at container startup via the REST API.
 
       - name: Update agent engine ID in Secret Manager
         if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
@@ -269,22 +261,34 @@ jobs:
               --project=${{ env.PROJECT_ID }} \
               --data-file=-
 
-          # Re-deploy the frontend with the same image to create a new revision
-          # that starts up fresh and picks up the updated secret value.
-          FRONTEND_IMAGE=$(gcloud run services describe a2a-frontend-adk-mb \
-            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
-            --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || \
-            echo "gcr.io/${{ env.PROJECT_ID }}/a2a-frontend-adk-mb:latest")
+      # ── Terraform Apply — Shells (GE Registration) ─────────────────────────
+      # Separate Terraform root with its own state. Only runs when a valid
+      # AGENT_ENGINE_ID is available. No -target flag needed — this root
+      # contains only GE registration resources.
 
-          gcloud run deploy a2a-frontend-adk-mb \
-            --image="${FRONTEND_IMAGE}" \
-            --region=${{ env.REGION }} \
-            --project=${{ env.PROJECT_ID }}
+      - name: Terraform Init (shells)
+        if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
+        working-directory: deployment/terraform/shells
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.PROJECT_ID }}-terraform-state" \
+            -backend-config="prefix=${{ github.event.repository.name }}/${{ github.ref_name }}-shells"
+
+      - name: Terraform Apply (shells — GE registration)
+        if: steps.deploy_agents.outputs.AGENT_ENGINE_ID != ''
+        working-directory: deployment/terraform/shells
+        run: |
+          terraform apply -auto-approve \
+            -var="deploy_project_id=${{ env.PROJECT_ID }}" \
+            -var="region=${{ env.REGION }}" \
+            -var="project_number=${{ env.PROJECT_NUMBER }}" \
+            -var="agent_engine_id=${{ steps.deploy_agents.outputs.AGENT_ENGINE_ID }}" \
+            -var="oauth_client_id_secret_name=${{ vars.OAUTH_CLIENT_ID_SECRET_NAME || '' }}" \
+            -var="ge_app_staging=${{ vars.GE_APP_STAGING || '' }}" \
+            -var="ge_app_prod=${{ vars.GE_APP_PROD || '' }}"
 
       # ── Configure Model Armor floor settings ───────────────────────────────
       # Runs after terraform apply so all IAM bindings have had time to propagate.
-      # roles/modelarmor.admin alone does not include resourcemanager.projects.get;
-      # roles/browser (added in iam.tf) fills that gap.
 
       - name: Configure Model Armor floor settings
         run: |

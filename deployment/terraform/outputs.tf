@@ -1,4 +1,4 @@
-# Output the URLs and resource IDs for downstream consumption
+# Output the URLs for downstream consumption by CI/CD
 
 output "cocktail_mcp_server_url" {
   description = "URL of the Cocktail MCP Server"
@@ -28,9 +28,4 @@ output "weather_mcp_server_name" {
 output "frontend_name" {
   description = "Resource name of the A2A Frontend"
   value       = google_cloud_run_v2_service.a2a_frontend.name
-}
-
-output "agent_engine_id" {
-  description = "Agent Engine ID for the Hosting Agent"
-  value       = var.agent_engine_id
 }

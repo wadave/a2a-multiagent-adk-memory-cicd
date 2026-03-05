@@ -220,6 +220,10 @@ tfplan
 .terraform*
 .terraform/
 
+# Terraform module build artifacts — generated shell scripts may contain
+# rendered secrets (OAuth client IDs/secrets) from template variables.
+deployment/terraform/modules/**/build/
+
 # ==========================
 # Project Specific / Secrets
 # ==========================
@@ -235,7 +239,7 @@ tfplan
 credentials.json
 token.json
 client_secret.json
-.secrets.baseline
+#.secrets.baseline
 
 # Agent / AI Configuration
 .claude/
@@ -256,7 +260,7 @@ src/a2a/
 src/google/
 
 # Configuration to ignore
-.pre-commit-config.yaml
+#.pre-commit-config.yaml
 .requirements.txt
 
 # Docker override files (local env-specific settings)

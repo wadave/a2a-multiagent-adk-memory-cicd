@@ -1,3 +1,7 @@
+# Hybrid Provisioning: Terraform creates the Cloud Run shell with a placeholder
+# image. CI/CD then deploys the real image via `gcloud run deploy`, which
+# updates the service in-place without Terraform interfering.
+
 # Cloud Run Service for Cocktail MCP Server
 resource "google_cloud_run_v2_service" "cocktail_mcp_server" {
   deletion_protection = false
@@ -8,7 +12,7 @@ resource "google_cloud_run_v2_service" "cocktail_mcp_server" {
   template {
     timeout = "300s"
     containers {
-      image = "gcr.io/${var.cicd_runner_project_id}/cocktail-remote-mcp-server-adk-mb:latest"
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
 
       resources {
         limits = {
@@ -22,6 +26,13 @@ resource "google_cloud_run_v2_service" "cocktail_mcp_server" {
   traffic {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
     percent = 100
+  }
+
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+      template[0].containers[0].env,
+    ]
   }
 }
 
@@ -35,7 +46,7 @@ resource "google_cloud_run_v2_service" "weather_mcp_server" {
   template {
     timeout = "300s"
     containers {
-      image = "gcr.io/${var.cicd_runner_project_id}/weather-remote-mcp-server-adk-mb:latest"
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
 
       resources {
         limits = {
@@ -49,6 +60,13 @@ resource "google_cloud_run_v2_service" "weather_mcp_server" {
   traffic {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
     percent = 100
+  }
+
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+      template[0].containers[0].env,
+    ]
   }
 }
 
@@ -62,22 +80,7 @@ resource "google_cloud_run_v2_service" "a2a_frontend" {
   template {
     timeout = "300s"
     containers {
-      image = "gcr.io/${var.cicd_runner_project_id}/a2a-frontend-adk-mb:latest"
-
-      env {
-        name  = "PROJECT_ID"
-        value = var.cicd_runner_project_id
-      }
-
-      env {
-        name  = "PROJECT_NUMBER"
-        value = var.project_number != "" ? var.project_number : data.google_project.project.number
-      }
-
-      env {
-        name  = "GOOGLE_CLOUD_LOCATION"
-        value = var.region
-      }
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
 
       resources {
         limits = {
@@ -92,5 +95,11 @@ resource "google_cloud_run_v2_service" "a2a_frontend" {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
     percent = 100
   }
-}
 
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+      template[0].containers[0].env,
+    ]
+  }
+}
