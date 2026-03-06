@@ -166,7 +166,7 @@ The environment utilizes an **App/Infra Divide** (Hybrid Provisioning) model, st
 - `google_cloud_run_v2_service`: For hosting MCP servers and the frontend.
 - `google_service_account`: Dedicated identities for each component.
 - `google_project_service`: Automatic enablement of required APIs (e.g., `aiplatform.googleapis.com`).
-- `google_vertex_ai_reasoning_engine`: Acts as an "infrastructure shell" for the agents. Terraform establishes the baseline identity, network, and naming properties, using `ignore_changes = [spec[0], display_name]` to ensure it never reverts application code updates made by the Python SDK.
+- `google_vertex_ai_reasoning_engine`: Acts as an "infrastructure shell" for the agents. Terraform establishes the baseline identity, network, and naming properties, using `ignore_changes` on the deployment and source code `spec` to ensure it never reverts application code updates made by the Python SDK.
 
 ### 7.2 CI/CD Pipeline
 

@@ -100,7 +100,7 @@ We strongly recommend using the automated CI/CD pipeline for deploying this infr
 Follow the **[CI/CD Setup Guide](docs/cicd-setup.md)** for full instructions and copy-paste commands.
 
 The CI/CD pipeline employs an **App/Infra Divide** (Hybrid Provisioning) approach to prevent state drift and handle dynamic Python dependencies:
-1. **Infrastructure (Terraform)** provisions all underlying resources and infrastructure "shells" (Service Accounts, Cloud Run services, empty Reasoning Engines) and explicitly ignores changes to deployment specs (`ignore_changes = [spec[0]]`).
+1. **Infrastructure (Terraform)** provisions all underlying resources and infrastructure "shells" (Service Accounts, Cloud Run services, empty Reasoning Engines) and explicitly ignores changes to deployment and source code specs (`ignore_changes` on `spec`).
 2. **Application (Python SDKs)** (`deploy_agents.py`) dynamically bundle dependencies from `pyproject.toml` and deploy the actual application code and artifacts to the initialized infrastructure shells.
 3. **Registration Scripts** use exponential backoff to handle Gemini Enterprise API's eventual consistency when creating or destroying linked authorizations.
 
@@ -133,7 +133,8 @@ _Note the generated URLs for both services._
 Update your local environment variables with the MCP URLs and your GCP Project settings, then run:
 
 ```bash
-# Install agent-engine dependencies first
+# Install agent-engine dependencies first (from the project root)
+cd ../../..
 uv sync --extra agent-engine
 python deployment/deploy_agents.py
 ```
