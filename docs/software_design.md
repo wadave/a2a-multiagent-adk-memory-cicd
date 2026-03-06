@@ -161,7 +161,7 @@ The system implements a centralized logging strategy to provide visibility acros
 
 ### 7.1 Infrastructure as Code (Terraform)
 
-The environment utilizes a **Hybrid Provisioning** model, separating infrastructure shells from application deployment:
+The environment utilizes an **App/Infra Divide** (Hybrid Provisioning) model, strictly separating infrastructure deployment from application code updates:
 
 - `google_cloud_run_v2_service`: For hosting MCP servers and the frontend.
 - `google_service_account`: Dedicated identities for each component.

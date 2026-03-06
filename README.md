@@ -99,9 +99,9 @@ We strongly recommend using the automated CI/CD pipeline for deploying this infr
 
 Follow the **[CI/CD Setup Guide](docs/cicd-setup.md)** for full instructions and copy-paste commands.
 
-The CI/CD pipeline employs a **Hybrid Provisioning** model to prevent state drift and handle dynamic Python dependencies:
-1. **Terraform** provisions the infrastructure "shells" (Service Accounts, empty Reasoning Engines) and explicitly ignores changes to deployment specs (`ignore_changes = [spec[0]]`).
-2. **Python SDKs** (`deploy_agents.py`) dynamically bundle dependencies from `pyproject.toml` and deploy the actual application artifacts to the initialized Agent Engines.
+The CI/CD pipeline employs an **App/Infra Divide** (Hybrid Provisioning) approach to prevent state drift and handle dynamic Python dependencies:
+1. **Infrastructure (Terraform)** provisions all underlying resources and infrastructure "shells" (Service Accounts, Cloud Run services, empty Reasoning Engines) and explicitly ignores changes to deployment specs (`ignore_changes = [spec[0]]`).
+2. **Application (Python SDKs)** (`deploy_agents.py`) dynamically bundle dependencies from `pyproject.toml` and deploy the actual application code and artifacts to the initialized infrastructure shells.
 3. **Registration Scripts** use exponential backoff to handle Gemini Enterprise API's eventual consistency when creating or destroying linked authorizations.
 
 Once configured, pushing to `staging` or `main` automatically triggers the pipeline — it detects which components changed and only deploys what's needed.
