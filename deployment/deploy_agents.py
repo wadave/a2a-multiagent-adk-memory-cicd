@@ -89,6 +89,11 @@ def deploy_agent(
 
     sa = service_account or f"{project_number}-compute@developer.gserviceaccount.com"
 
+    with open(requirements_file) as f:
+        requirements = [
+            line.strip() for line in f.readlines() if line.strip() and not line.startswith("#")
+        ]
+
     config = AgentEngineConfig(
         display_name=display_name,
         description=description,
@@ -98,7 +103,7 @@ def deploy_agent(
         class_methods=class_methods,
         env_vars=env_vars,
         service_account=sa,
-        requirements_file=requirements_file,
+        requirements=requirements,
     )
 
     existing_name = find_existing_agent(client, display_name)
