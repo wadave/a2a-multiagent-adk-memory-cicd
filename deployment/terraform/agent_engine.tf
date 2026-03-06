@@ -70,9 +70,7 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
   # Prevent Terraform from overwriting source code updated by deploy_agents.py
   lifecycle {
     ignore_changes = [
-      spec[0].source_code_spec,
-      spec[0].package_spec,
-      spec[0].deployment_spec,
+      spec[0],
       display_name
     ]
   }
