@@ -46,21 +46,33 @@ else
   exit 1
 fi
 
-# Delete Authorization Resource from Discovery Engine
-echo -n "Deleting Authorization \"$${authorization_name}\" from Discovery Engine: "
-delete_output=$(curl -s -X DELETE \
-    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-    -H "x-goog-user-project: $(gcloud config get-value project 2>&1 | grep -v 'active config')" \
-    -H "content-type: application/json" \
-    "https://$${api_endpoint}/v1alpha/$${authorization_name}")
+# Delete Authorization Resource from Discovery Engine.
+# Retry with backoff to handle GE eventual consistency after agent deregistration
+# (the linked agent may still appear registered briefly after deletion).
+max_attempts=6
+sleep_secs=10
+for attempt in $(seq 1 $${max_attempts}); do
+  echo -n "Deleting Authorization \"$${authorization_name}\" from Discovery Engine (attempt $${attempt}/$${max_attempts}): "
+  delete_output=$(curl -s -X DELETE \
+      -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+      -H "x-goog-user-project: $(gcloud config get-value project 2>&1 | grep -v 'active config')" \
+      -H "content-type: application/json" \
+      "https://$${api_endpoint}/v1alpha/$${authorization_name}")
 
-register_error=$(echo "$delete_output" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d.get('error', 'null')) if isinstance(d, dict) else print('null')")
-if [[ "$register_error" == "null" ]]; then
-  echo "Success"
-else
-  echo "Failure: '$delete_output'"
-  exit 1
-fi
+  delete_error=$(echo "$delete_output" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d.get('error', 'null')) if isinstance(d, dict) else print('null')")
+  if [[ "$delete_error" == "null" ]]; then
+    echo "Success"
+    echo "$${delete_output}"
+    exit 0
+  fi
 
-echo "$${delete_output}"
-exit 0
+  # Retry on FAILED_PRECONDITION (authorization still linked to a recently-deleted agent)
+  delete_error_status=$(echo "$delete_output" | python3 -c "import sys, json; print(json.load(sys.stdin).get('error', {}).get('status', ''))")
+  if [[ "$delete_error_status" == "FAILED_PRECONDITION" ]] && [[ $${attempt} -lt $${max_attempts} ]]; then
+    echo "Authorization still linked (GE eventual consistency) — retrying in $${sleep_secs}s..."
+    sleep $${sleep_secs}
+  else
+    echo "Failure: '$delete_output'"
+    exit 1
+  fi
+done
