@@ -89,10 +89,13 @@ def deploy_agent(
 
     sa = service_account or f"{project_number}-compute@developer.gserviceaccount.com"
 
-    with open(requirements_file) as f:
-        requirements = [
-            line.strip() for line in f.readlines() if line.strip() and not line.startswith("#")
-        ]
+    # Copy the requirements file into the working directory (src/) as requirements.txt
+    # so it gets included in the source tarball, and add it to source_packages.
+    req_filename = "requirements.txt"
+    with open(requirements_file) as fin, open(req_filename, "w") as fout:
+        fout.write(fin.read())
+
+    source_packages = list(source_packages) + [req_filename]
 
     config = AgentEngineConfig(
         display_name=display_name,
@@ -103,7 +106,7 @@ def deploy_agent(
         class_methods=class_methods,
         env_vars=env_vars,
         service_account=sa,
-        requirements=requirements,
+        requirements_file=req_filename,
     )
 
     existing_name = find_existing_agent(client, display_name)
