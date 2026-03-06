@@ -161,11 +161,12 @@ The system implements a centralized logging strategy to provide visibility acros
 
 ### 7.1 Infrastructure as Code (Terraform)
 
-The environment consists of several Terraform-managed resources:
+The environment utilizes a **Hybrid Provisioning** model, separating infrastructure shells from application deployment:
 
 - `google_cloud_run_v2_service`: For hosting MCP servers and the frontend.
 - `google_service_account`: Dedicated identities for each component.
 - `google_project_service`: Automatic enablement of required APIs (e.g., `aiplatform.googleapis.com`).
+- `google_vertex_ai_reasoning_engine`: Acts as an "infrastructure shell" for the agents. Terraform establishes the baseline identity, network, and naming properties, using `ignore_changes = [spec[0], display_name]` to ensure it never reverts application code updates made by the Python SDK.
 
 ### 7.2 CI/CD Pipeline
 
@@ -173,9 +174,9 @@ GitHub Actions automates the lifecycle (`.github/workflows/deploy.yml`):
 
 - **Change Detection**: Path-filter determines which components changed (MCP servers, agents, frontend, Terraform).
 - **Build**: Containerizes Gradio frontend and MCP servers via `gcloud builds submit`.
-- **Infrastructure**: Terraform apply provisions Cloud Run, IAM, Secret Manager, and Model Armor resources.
-- **Agent Deploy**: `deployment/deploy_agents.py` packages and deploys agents to Vertex AI Agent Engine.
-- **Gemini Enterprise**: Second Terraform pass registers agents with Gemini Enterprise for external discovery.
+- **Infrastructure (Shells)**: Terraform `apply` provisions the base Cloud Run environments and Agent Engine shells.
+- **Agent Deploy (Application Logic)**: `deployment/deploy_agents.py` dynamically extracts dependencies from `pyproject.toml` and updates the Reasoning Engine schemas using the Vertex AI Python SDK.
+- **Gemini Enterprise Integration**: A post-deployment Terraform `local-exec` provisioner registers the fully-deployed reasoning engines with Gemini Enterprise. It includes exponential backoff retry logic to safely handle eventually consistent API state during registration and deregistration (`terraform destroy`).
 - **Secret Update**: Stores the Agent Engine ID in Secret Manager for the frontend to consume at startup.
 - **Model Armor**: Enforces safety floor settings after each deployment.
 - **Authentication**: Uses Workload Identity Federation (keyless) between GitHub Actions and Google Cloud.
