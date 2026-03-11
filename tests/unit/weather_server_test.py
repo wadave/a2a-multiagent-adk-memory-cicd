@@ -12,10 +12,10 @@ format_forecast_period = _mod.format_forecast_period
 get_weather_response = _mod.get_weather_response
 _internal_get_forecast = _mod._internal_get_forecast
 
-# @mcp.tool() wraps functions in FunctionTool; access the original via .fn
-get_alerts = _mod.get_alerts.fn
-get_forecast = _mod.get_forecast.fn
-get_forecast_by_city = _mod.get_forecast_by_city.fn
+# @mcp.tool() decorated functions are plain functions in current FastMCP
+get_alerts = _mod.get_alerts
+get_forecast = _mod.get_forecast
+get_forecast_by_city = _mod.get_forecast_by_city
 
 
 # ---------------------------------------------------------------------------

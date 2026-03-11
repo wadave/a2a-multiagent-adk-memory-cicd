@@ -16,8 +16,6 @@
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 
 class TestGoogleAuthClass:
     """Tests for GoogleAuth authentication class."""
@@ -93,6 +91,7 @@ class TestEnvironmentConfiguration:
             "PROJECT_ID": "test-project",
             "PROJECT_NUMBER": "123456",
             "AGENT_ENGINE_ID": "789",
+            "LOCATION": "us-west1",
             "GOOGLE_CLOUD_LOCATION": "us-west1",
         },
     )
@@ -126,7 +125,6 @@ class TestEnvironmentConfiguration:
 class TestAgentCardRetrieval:
     """Tests for agent card retrieval."""
 
-    @pytest.mark.asyncio
     @patch("frontend.main.client")
     async def test_get_agent_card_success(self, mock_client):
         """Verify successful agent card retrieval."""
@@ -157,7 +155,6 @@ class TestResponseProcessing:
         assert hasattr(TaskState, "completed")
         assert hasattr(TaskState, "failed")
 
-    @pytest.mark.asyncio
     async def test_message_creation(self):
         """Verify message creation with proper structure."""
         from a2a.types import Message, Part, Role, TextPart
@@ -177,7 +174,6 @@ class TestResponseProcessing:
 class TestErrorHandling:
     """Tests for error handling in frontend."""
 
-    @pytest.mark.asyncio
     @patch("frontend.main.get_agent_card")
     @patch("frontend.main.httpx.AsyncClient")
     async def test_error_handling_in_get_response(self, mock_client_class, mock_get_card):
